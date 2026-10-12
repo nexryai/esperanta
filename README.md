@@ -1,10 +1,10 @@
 # Esperanta
 
-Goで実装した、シンプルなHTTP forward proxyです。
+A simple HTTP forward proxy written in Go.
 
-## ローカル実行
+## Run locally
 
-Goのバージョンは`go.mod`を参照してください。一般ユーザーで実行します。
+See `go.mod` for the required Go version. Run as a regular user.
 
 ```sh
 go build -trimpath -o bin/esperanta ./cmd/esperanta
@@ -12,18 +12,18 @@ go build -trimpath -o bin/esperanta ./cmd/esperanta
 ./bin/esperanta --config config.yaml
 ```
 
-別の端末から動作を確認できます。
+You can test it from another terminal:
 
 ```sh
 curl --noproxy '' --proxy http://127.0.0.1:8080 http://example.com/
 curl --noproxy '' --proxy http://127.0.0.1:8080 https://example.com/
 ```
 
-## YAML設定
+## YAML configuration
 
-全項目を含む設定例は[`config.yaml`](config.yaml)にあります。
-初期設定は`127.0.0.1:8080`で待ち受け、loopbackからの接続だけを許可します。
-LANに公開する場合は、例えば以下のように変更します。
+See [`config.yaml`](config.yaml) for an example with every option.
+The default configuration listens on `127.0.0.1:8080` and only allows connections from loopback addresses.
+To make the proxy available on your LAN, change it as follows, for example:
 
 ```yaml
 listen: "0.0.0.0:8080"
@@ -34,29 +34,29 @@ allowed_ports: [80, 443]
 deny_private_destinations: true
 ```
 
-`allowed_sources`はIPv4・IPv6の単一IPまたはCIDRです。空のリストは
-起動エラーになり、許可されていない接続はTCP接続の時点で閉じます。
-判定にはTCP接続元を使用し、`X-Forwarded-For`等は参照しません。
-ロードバランサー等を挟む場合、判定対象はその接続元IPになります。
+`allowed_sources` accepts individual IPv4 or IPv6 addresses and CIDR ranges. An empty list
+causes a startup error, and connections from sources that are not allowed are closed at the TCP level.
+The proxy checks the TCP peer address and does not use `X-Forwarded-For` or similar headers.
+If a load balancer sits in front of the proxy, its IP address is the one checked.
 
-| 項目 | 用途 |
+| Option | Purpose |
 | --- | --- |
-| `allowed_ports` | HTTP転送とCONNECTの接続先ポート制限 |
-| `deny_private_destinations` | 内部IP、loopback、link-local、共有アドレス等への接続を拒否 |
-| `max_concurrent` | 同時処理するHTTPリクエストとCONNECTトンネルの合計上限 |
-| `max_connections` | アイドル接続を含むクライアントTCP接続の上限 |
-| `max_idle_connections` | プールに保持する接続先へのアイドル接続数 |
-| `max_idle_connections_per_host` | 接続先ごとのアイドル接続数 |
-| `dial_timeout` | DNS解決を含む接続確立の制限時間 |
-| `header_timeout` | クライアント・接続先のHTTPヘッダー待機時間 |
-| `request_timeout` | 通常のHTTPリクエスト全体の制限時間 |
-| `idle_timeout` | クライアント・接続先のアイドル接続の保持時間 |
-| `tunnel_timeout` | CONNECTトンネルの最大寿命 |
-| `shutdown_timeout` | 通常のHTTPリクエストの終了待機時間 |
+| `allowed_ports` | Restricts destination ports for HTTP forwarding and CONNECT |
+| `deny_private_destinations` | Blocks connections to private, loopback, link-local, shared, and other nonpublic IP addresses |
+| `max_concurrent` | Limits the combined number of HTTP requests and CONNECT tunnels handled concurrently |
+| `max_connections` | Limits client TCP connections, including idle connections |
+| `max_idle_connections` | Limits idle connections to destinations kept in the pool |
+| `max_idle_connections_per_host` | Limits idle connections per destination host |
+| `dial_timeout` | Limits connection setup time, including DNS resolution |
+| `header_timeout` | Limits how long the proxy waits for HTTP headers from clients and destinations |
+| `request_timeout` | Limits the total duration of a regular HTTP request |
+| `idle_timeout` | Limits how long idle client and destination connections are kept open |
+| `tunnel_timeout` | Limits the maximum lifetime of a CONNECT tunnel |
+| `shutdown_timeout` | Limits how long shutdown waits for regular HTTP requests to finish |
 
-時間は`10s`や`2m`で指定します。省略した項目には既定値を適用します。
-設定変更は再起動で反映します。
+Specify durations such as `10s` or `2m`. Omitted options use their default values.
+Restart the proxy to apply configuration changes.
 
-接続先のDNS解決結果を検査し、検査済みのIPへ直接接続します。
-非公開IPが混在するDNS応答も拒否します。内部サービスへの接続が必要な場合は
-`deny_private_destinations: false`に変更できます。
+The proxy checks the IP addresses returned by DNS for each destination and connects directly to a checked IP address.
+It also rejects DNS responses that contain a mix of public and nonpublic IP addresses. If you need to connect to internal services,
+set `deny_private_destinations: false`.
