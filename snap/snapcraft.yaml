@@ -5,8 +5,7 @@ version: '0.1.0'
 summary: An IP-restricted HTTP and HTTPS forward proxy
 description: |
   A Go forward proxy with YAML configuration, connection pooling,
-  bounded concurrency and HTTPS CONNECT support. The daemon runs
-  without root privileges inside strict Snap confinement.
+  bounded concurrency and HTTPS CONNECT support.
 grade: stable
 confinement: strict
 license: MIT
