@@ -39,7 +39,10 @@ func (p *Proxy) dial(ctx context.Context, network, address string) (net.Conn, er
 	}
 	ctx, cancel := context.WithTimeout(ctx, p.c.DialTimeout)
 	defer cancel()
-	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
+	// Avoid libc NSS plugins and Unix sockets, which would require broader
+	// filesystem access than the three files granted to the Go resolver.
+	resolver := net.Resolver{PreferGo: true}
+	ips, err := resolver.LookupNetIP(ctx, "ip", host)
 	if err != nil {
 		return nil, err
 	}
@@ -52,6 +55,7 @@ func (p *Proxy) dial(ctx context.Context, network, address string) (net.Conn, er
 		}
 	}
 	d := net.Dialer{KeepAlive: 30 * time.Second}
+	d.SetMultipathTCP(false)
 	for _, a := range ips {
 		// Dial the validated literal address: never resolve the hostname a second time.
 		c, e := d.DialContext(ctx, network, net.JoinHostPort(a.String(), port))

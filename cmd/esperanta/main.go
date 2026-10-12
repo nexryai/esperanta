@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,8 +12,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/nexryai/esperanta/internal/config"
+	"github.com/nexryai/esperanta/internal/landlock"
 	"github.com/nexryai/esperanta/internal/proxy"
 )
 
@@ -38,10 +41,36 @@ func run() error {
 		fmt.Println("configuration valid")
 		return nil
 	}
-	ln, err := net.Listen("tcp", c.Listen)
+	// Load trust roots and timezone data before filesystem access is restricted.
+	// The proxy needs no runtime access to certificates or its YAML file.
+	if _, err := x509.SystemCertPool(); err != nil {
+		return fmt.Errorf("load system trust roots: %w", err)
+	}
+	time.Now().In(time.Local).Zone()
+
+	var policy landlock.Policy
+	for _, port := range c.AllowedPorts {
+		if err := policy.AllowPort(port); err != nil {
+			return err
+		}
+	}
+	if err := policy.AllowDNS(); err != nil {
+		return err
+	}
+
+	// Landlock does not mediate Multipath TCP. Use classic TCP explicitly,
+	// even when GODEBUG or a future Go release enables MPTCP by default.
+	var listenConfig net.ListenConfig
+	listenConfig.SetMultipathTCP(false)
+	ln, err := listenConfig.Listen(context.Background(), "tcp", c.Listen)
 	if err != nil {
 		return err
 	}
+	defer ln.Close()
+	if err := policy.Restrict(); err != nil {
+		return err
+	}
+	slog.Info("Landlock sandbox enabled")
 	listener := &proxy.Listener{
 		Listener: ln,
 		Config:   c,
