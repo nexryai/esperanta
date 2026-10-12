@@ -5,7 +5,12 @@ A simple HTTP forward proxy written in Go.
 ## Installation
 ```sh
 sudo snap install --edge esperanta
+
+# Edit config
 sudo nano /var/snap/esperanta/current/config/config.yaml
+
+# Apply config
+sudo snap restart esperanta
 ```
 
 ## Run locally
