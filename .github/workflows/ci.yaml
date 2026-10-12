@@ -22,9 +22,34 @@ jobs:
       - run: go build -trimpath -o bin/esperanta ./cmd/esperanta
       - run: ./bin/esperanta --config config.yaml --check
 
+  landlock:
+    name: Non-Snap Landlock (CGO=${{ matrix.cgo }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        cgo: ['0', '1']
+    env:
+      CGO_ENABLED: ${{ matrix.cgo }}
+      ESPERANTA_REQUIRE_LANDLOCK: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - name: Require unprivileged execution outside Snap
+        run: |
+          test "$(id -u)" -ne 0
+          test -z "${SNAP:-}"
+      - name: Kernel allow and deny tests, including existing threads
+        run: go test -count=1 -v ./internal/landlock
+      - name: Proxy HTTP, TLS, DNS, CONNECT and fail-closed startup
+        run: go test -count=1 -tags=integration -v ./cmd/esperanta
+
   snap:
     runs-on: ubuntu-24.04
-    needs: test
+    needs: [test, landlock]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

@@ -266,11 +266,14 @@ func testUnavailable(t *testing.T) {
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 		t.Fatal(err)
 	}
-	_, _, errno := unix.Syscall(unix.SYS_SECCOMP, unix.SECCOMP_SET_MODE_FILTER,
+	result, _, errno := unix.Syscall(unix.SYS_SECCOMP, unix.SECCOMP_SET_MODE_FILTER,
 		unix.SECCOMP_FILTER_FLAG_TSYNC, uintptr(unsafe.Pointer(&program)))
 	runtime.KeepAlive(filters)
 	if errno != 0 {
 		t.Fatal(errno)
+	}
+	if result != 0 {
+		t.Fatalf("seccomp thread synchronization failed for thread %d", result)
 	}
 	var policy Policy
 	if err := policy.Restrict(); !errors.Is(err, unix.ENOSYS) {

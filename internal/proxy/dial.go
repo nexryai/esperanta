@@ -8,6 +8,10 @@ import (
 	"time"
 )
 
+// Share resolver state and in-flight lookups across concurrent connections.
+// PreferGo avoids NSS plugins that need broader filesystem permissions.
+var resolver = &net.Resolver{PreferGo: true}
+
 var deniedNetworks = []netip.Prefix{
 	netip.MustParsePrefix("0.0.0.0/8"), netip.MustParsePrefix("100.64.0.0/10"),
 	netip.MustParsePrefix("192.0.0.0/24"), netip.MustParsePrefix("192.0.2.0/24"),
@@ -41,7 +45,6 @@ func (p *Proxy) dial(ctx context.Context, network, address string) (net.Conn, er
 	defer cancel()
 	// Avoid libc NSS plugins and Unix sockets, which would require broader
 	// filesystem access than the three files granted to the Go resolver.
-	resolver := net.Resolver{PreferGo: true}
 	ips, err := resolver.LookupNetIP(ctx, "ip", host)
 	if err != nil {
 		return nil, err

@@ -37,6 +37,7 @@ check_service() {
 }
 
 check_service
+sudo snap logs -n=100 esperanta.esperanta | grep -q 'Landlock sandbox enabled'
 sudo snap run esperanta --check
 sudo snap restart esperanta.esperanta
 check_service
