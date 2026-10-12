@@ -1,8 +1,6 @@
 # Esperanta
 
-Goで実装した、YAML設定による接続元制限付きのHTTP forward proxyです。
-HTTP転送とHTTPSのCONNECTトンネルに対応します。TLSはクライアントと
-接続先の間で終端し、プロキシは復号しません。
+Goで実装した、シンプルなHTTP forward proxyです。
 
 ## ローカル実行
 
@@ -57,74 +55,8 @@ deny_private_destinations: true
 | `shutdown_timeout` | 通常のHTTPリクエストの終了待機時間 |
 
 時間は`10s`や`2m`で指定します。省略した項目には既定値を適用します。
-未知のキー、重複キー、不正なIPやポート、複数YAML文書は起動時に拒否します。
 設定変更は再起動で反映します。
 
 接続先のDNS解決結果を検査し、検査済みのIPへ直接接続します。
 非公開IPが混在するDNS応答も拒否します。内部サービスへの接続が必要な場合は
 `deny_private_destinations: false`に変更できます。
-
-## Snapパッケージ
-
-Snapcraftが利用でき、strict confinementを完全にサポートするLinux環境で
-ビルド・実行します。CIはUbuntu 24.04でパッケージをビルドし、インストール、
-実行UID、capabilities、再起動、停止を検証します。
-
-```sh
-snapcraft
-sudo snap install --dangerous ./esperanta_0.1.0_amd64.snap
-sudo snap services esperanta
-sudo snap logs esperanta.esperanta
-```
-
-`--dangerous`はローカルの未署名パッケージをインストールするためのオプションです。
-confinementは`strict`のままです。
-
-設定ファイルは`/var/snap/esperanta/current/config/config.yaml`です。
-インストール時に既定設定を配置します。設定はリビジョンごとの`SNAP_DATA`に
-置くため、更新時に引き継がれ、Snapのロールバック対象になります。
-
-```sh
-sudo snap stop esperanta.esperanta
-sudoedit /var/snap/esperanta/current/config/config.yaml
-sudo chmod 0400 /var/snap/esperanta/current/config/config.yaml
-sudo chown 584792:0 /var/snap/esperanta/current/config/config.yaml
-sudo snap run esperanta --check
-sudo snap start esperanta.esperanta
-```
-
-Snapサービスのランチャーはrootで起動されますが、`setpriv`で
-`_daemon_`（UID/GID 584792）へ切り替え、補助グループと実行時のcapabilitiesを除去してから
-Goプロセスを起動します。`no-new-privs`も設定します。
-Go側でも実UIDまたは実効UIDがrootなら起動を拒否します。
-待ち受けポートは1024以上に限定します。
-capability bounding setはSnapのポリシーが管理します。
-CIはpermitted・effective・inheritable・ambient capabilitiesがすべて空であることを検証します。
-
-`system-usernames`による権限降格は[Snapの公式方式](https://snapcraft.io/docs/explanation/snap-development/system-usernames/)
-に従います。接続するインターフェースは`network`と`network-bind`だけです。
-AppArmor・seccomp・名前空間による[strict confinement](https://snapcraft.io/docs/explanation/security/snap-confinement/)
-を使用し、ホストのホームディレクトリやシステムファイルへのアクセス権は追加しません。
-ホストで`snap debug confinement`が`strict`を返すことを確認してください。
-
-## 性能と検証
-
-接続先へのkeep-alive接続を再利用し、HTTP/2対応の接続先にも対応します。
-レスポンスを全体としてメモリーへ読み込まず、32 KiBの再利用バッファーで転送します。
-CONNECTもストリームとして双方向に転送し、終了時には両側の接続を閉じます。
-処理数上限ではHTTP 503を返し、TCP接続数上限では追加接続を閉じます。
-
-```sh
-go test -race ./...
-go vet ./...
-go test ./internal/proxy -run '^$' -bench BenchmarkForward -benchmem
-```
-
-テストは接続元・ポート制限、ヘッダー除去、接続再利用、実際のHTTPS通信、
-CONNECTに続けて送ったデータ、停止時のトンネル破棄、接続数上限を検証します。
-ベンチマークはloopback上の32 KiB HTTPレスポンスを並列転送します。
-実ネットワークでの性能はCPU、帯域、接続先、同時接続数に依存します。
-
-SIGTERM/SIGINTで待ち受けを停止し、CONNECTトンネルを閉じます。
-通常のHTTP処理は`shutdown_timeout`まで終了を待ちます。
-HTTP UpgradeはCONNECT経由で使用してください。接続元の認証はIP制限です。
