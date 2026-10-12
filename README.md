@@ -2,6 +2,12 @@
 
 A simple HTTP forward proxy written in Go.
 
+## Installation
+```sh
+sudo snap install --edge esperanta
+sudo nano /var/snap/esperanta/current/config/config.yaml
+```
+
 ## Run locally
 
 See `go.mod` for the required Go version. Run as a regular user.
