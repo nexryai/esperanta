@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+# Snap services start as root. Drop identity, supplementary groups and
+# capabilities before Go starts or reads any administrator-supplied YAML.
+exec "$SNAP/usr/bin/setpriv" \
+    --reuid=584792 \
+    --regid=584792 \
+    --clear-groups \
+    --inh-caps=-all \
+    --ambient-caps=-all \
+    --bounding-set=-all \
+    --no-new-privs \
+    -- "$SNAP/bin/esperanta" \
+    --config "$SNAP_DATA/config/config.yaml" "$@"

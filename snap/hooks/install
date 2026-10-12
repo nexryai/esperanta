@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+# Keep the parent owned by root so the daemon cannot replace its config.
+# The file owner must match the daemon UID for Snap's owner-based policy.
+install -d -m 0755 "$SNAP_DATA/config"
+install -m 0400 "$SNAP/etc/esperanta/config.yaml" "$SNAP_DATA/config/config.yaml"
+chown 584792:0 "$SNAP_DATA/config/config.yaml"

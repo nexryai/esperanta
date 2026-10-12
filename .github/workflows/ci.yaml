@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+      - run: test -z "$(gofmt -l cmd internal)"
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: go build -trimpath -o bin/esperanta ./cmd/esperanta
+      - run: ./bin/esperanta --config config.yaml --check
+
+  snap:
+    runs-on: ubuntu-24.04
+    needs: test
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: snapcore/action-build@b391f430cb2650fd359ed4d2cfe88b2c481800e0 # v1
+        id: build
+      - name: Install confined snap
+        run: sudo snap install --dangerous "${{ steps.build.outputs.snap }}"
+      - name: Verify service identity and confinement
+        run: bash scripts/check-snap.sh
+      - name: Service logs
+        if: always()
+        run: sudo snap logs esperanta.esperanta || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: esperanta-snap
+          path: ${{ steps.build.outputs.snap }}

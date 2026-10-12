@@ -31,3 +31,11 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Local builds and Snapcraft output
+/bin/
+/*.snap
+/parts/
+/prime/
+/stage/
+/.snapcraft/

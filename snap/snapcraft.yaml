@@ -1,0 +1,45 @@
+name: esperanta
+base: core24
+version: '0.1.0'
+summary: An IP-restricted HTTP and HTTPS forward proxy
+description: |
+  A Go forward proxy with YAML configuration, connection pooling,
+  bounded concurrency and HTTPS CONNECT support. The daemon runs
+  without root privileges inside strict Snap confinement.
+grade: stable
+confinement: strict
+license: MIT
+assumes:
+  - snapd2.61
+
+system-usernames:
+  _daemon_: shared
+
+apps:
+  esperanta:
+    command: bin/start-esperanta
+    daemon: simple
+    plugs:
+      - network
+      - network-bind
+    restart-condition: on-failure
+    stop-timeout: 30s
+
+parts:
+  esperanta:
+    plugin: nil
+    source: .
+    build-snaps:
+      - go/1.26/stable
+    stage-packages:
+      - util-linux
+      - ca-certificates
+    override-build: |
+      go mod download
+      install -d "$CRAFT_PART_INSTALL/bin"
+      CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' \
+        -o "$CRAFT_PART_INSTALL/bin/esperanta" ./cmd/esperanta
+      install -Dm755 snap/local/start-esperanta \
+        "$CRAFT_PART_INSTALL/bin/start-esperanta"
+      install -Dm644 config.yaml \
+        "$CRAFT_PART_INSTALL/etc/esperanta/config.yaml"
