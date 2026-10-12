@@ -1,4 +1,5 @@
 name: esperanta
+title: Esperanta
 base: core24
 version: '0.1.0'
 summary: An IP-restricted HTTP and HTTPS forward proxy
@@ -9,6 +10,10 @@ description: |
 grade: stable
 confinement: strict
 license: MIT
+contact: https://github.com/nexryai/esperanta/issues
+issues: https://github.com/nexryai/esperanta/issues
+source-code: https://github.com/nexryai/esperanta
+website: https://github.com/nexryai/esperanta
 assumes:
   - snapd2.61
 

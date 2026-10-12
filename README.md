@@ -94,10 +94,12 @@ sudo snap start esperanta.esperanta
 ```
 
 Snapサービスのランチャーはrootで起動されますが、`setpriv`で
-`_daemon_`（UID/GID 584792）へ切り替え、補助グループとcapabilitiesを除去してから
+`_daemon_`（UID/GID 584792）へ切り替え、補助グループと実行時のcapabilitiesを除去してから
 Goプロセスを起動します。`no-new-privs`も設定します。
 Go側でも実UIDまたは実効UIDがrootなら起動を拒否します。
 待ち受けポートは1024以上に限定します。
+capability bounding setはSnapのポリシーが管理します。
+CIはpermitted・effective・inheritable・ambient capabilitiesがすべて空であることを検証します。
 
 `system-usernames`による権限降格は[Snapの公式方式](https://snapcraft.io/docs/explanation/snap-development/system-usernames/)
 に従います。接続するインターフェースは`network`と`network-bind`だけです。

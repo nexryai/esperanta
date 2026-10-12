@@ -27,9 +27,9 @@ check_service() {
         /^Uid:/ { uid_ok = ($2 == 584792 && $3 == 584792 && $4 == 584792 && $5 == 584792) }
         /^Gid:/ { gid_ok = ($2 == 584792 && $3 == 584792 && $4 == 584792 && $5 == 584792) }
         /^Groups:/ { groups_ok = (NF == 1) }
-        /^Cap(Inh|Prm|Eff|Bnd|Amb):/ { if ($2 !~ /^0+$/) bad_caps = 1; caps_seen++ }
+        /^Cap(Inh|Prm|Eff|Amb):/ { if ($2 !~ /^0+$/) bad_caps = 1; caps_seen++ }
         /^NoNewPrivs:/ { no_new_privs = ($2 == 1) }
-        END { exit !(uid_ok && gid_ok && groups_ok && caps_seen == 5 && !bad_caps && no_new_privs) }
+        END { exit !(uid_ok && gid_ok && groups_ok && caps_seen == 4 && !bad_caps && no_new_privs) }
     ' "/proc/$proxy_pid/status"
 
     test "$(sudo cat "/proc/$proxy_pid/comm")" = esperanta
