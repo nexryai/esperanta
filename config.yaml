@@ -1,0 +1,25 @@
+# 許可されていない接続元はTCP接続の時点で拒否します。
+listen: "127.0.0.1:8080"
+allowed_sources:
+  - "127.0.0.1"
+  - "::1"
+  # - "192.168.1.0/24"
+  # - "2001:db8:1234::/48"
+
+# HTTPとCONNECTの両方に適用します。
+allowed_ports: [80, 443]
+# 内部ネットワーク、loopback、link-local等への接続を拒否します。
+deny_private_destinations: true
+
+max_concurrent: 1024
+max_connections: 2048
+max_idle_connections: 1024
+max_idle_connections_per_host: 64
+
+dial_timeout: 10s
+header_timeout: 10s
+request_timeout: 2m
+idle_timeout: 90s
+# CONNECTトンネルの最大寿命（アイドル時間ではありません）。
+tunnel_timeout: 1h
+shutdown_timeout: 15s
