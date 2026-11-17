@@ -23,6 +23,29 @@ func TestPolicyRejectsInvalidGrants(t *testing.T) {
 	}
 }
 
+func TestReplaceableReadFileDirectory(t *testing.T) {
+	targetDirectory := t.TempDir()
+	target := filepath.Join(targetDirectory, "resolv.conf")
+	if err := os.WriteFile(target, []byte("nameserver 192.0.2.1"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "resolv.conf")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	got, err := replaceableReadFileDirectory(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(targetDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("read-file tree = %q; want resolved target parent %q", got, want)
+	}
+}
+
 func TestRestrictionRejectsDisappearingFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "configuration")
 	if err := os.WriteFile(path, []byte("data"), 0600); err != nil {

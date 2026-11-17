@@ -3,6 +3,7 @@
 package landlock
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -64,6 +65,126 @@ func TestKernelSandbox(t *testing.T) {
 			t.Log(string(output))
 		})
 	}
+}
+
+func TestKernelSandboxDNSFileReplacement(t *testing.T) {
+	if _, err := supportedVersion(); err != nil {
+		if os.Getenv("ESPERANTA_REQUIRE_LANDLOCK") == "1" {
+			t.Fatal(err)
+		}
+		t.Skip(err)
+	}
+	if os.Geteuid() == 0 {
+		t.Fatal("kernel sandbox tests must run as a non-root user")
+	}
+
+	directory := t.TempDir()
+	path := filepath.Join(directory, "resolv.conf")
+	if err := os.WriteFile(path, []byte("original"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.WriteFile(outside, []byte("outside"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestDNSReplacementSandboxHelper$")
+	command.Env = append(os.Environ(),
+		"ESPERANTA_REPLACEMENT_TEST_DIRECTORY="+directory,
+		"ESPERANTA_REPLACEMENT_TEST_OUTSIDE="+outside,
+	)
+	readyReader, readyWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer readyReader.Close()
+	releaseReader, releaseWriter, err := os.Pipe()
+	if err != nil {
+		readyWriter.Close()
+		t.Fatal(err)
+	}
+	defer releaseWriter.Close()
+	command.ExtraFiles = []*os.File{readyWriter, releaseReader}
+	var output bytes.Buffer
+	command.Stdout = &output
+	command.Stderr = &output
+	if err := command.Start(); err != nil {
+		readyWriter.Close()
+		releaseReader.Close()
+		t.Fatal(err)
+	}
+	readyWriter.Close()
+	releaseReader.Close()
+	defer func() {
+		if command.ProcessState == nil {
+			command.Process.Kill()
+			command.Wait()
+		}
+	}()
+
+	var ready [1]byte
+	if _, err := readyReader.Read(ready[:]); err != nil {
+		releaseWriter.Close()
+		command.Wait()
+		t.Fatalf("sandbox child exited before enforcement: %v\n%s", err, output.Bytes())
+	}
+	// Emulate NetworkManager, DHCP clients and resolved replacing resolv.conf
+	// with write-temp + rename rather than modifying its original inode.
+	replacement := path + ".new"
+	if err := os.WriteFile(replacement, []byte("replacement"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(replacement, path); err != nil {
+		t.Fatal(err)
+	}
+	releaseWriter.Close()
+	if err := command.Wait(); err != nil {
+		t.Fatalf("sandbox child after resolver file replacement: %v\n%s", err, output.Bytes())
+	}
+}
+
+func TestDNSReplacementSandboxHelper(t *testing.T) {
+	directory := os.Getenv("ESPERANTA_REPLACEMENT_TEST_DIRECTORY")
+	if directory == "" {
+		return
+	}
+	if os.Geteuid() == 0 {
+		t.Fatal("kernel sandbox tests must run as a non-root user")
+	}
+	path := filepath.Join(directory, "resolv.conf")
+	resolvedDirectory, err := replaceableReadFileDirectory(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := Policy{fileTrees: []string{resolvedDirectory}}
+	if err := policy.Restrict(); err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil || string(contents) != "original" {
+		t.Fatalf("initial resolver file read: %q %v", contents, err)
+	}
+	ready := os.NewFile(3, "ready")
+	if _, err := ready.Write([]byte{1}); err != nil {
+		t.Fatal(err)
+	}
+	ready.Close()
+	release := os.NewFile(4, "release")
+	var signal [1]byte
+	_, _ = release.Read(signal[:])
+	release.Close()
+
+	contents, err = os.ReadFile(path)
+	if err != nil || string(contents) != "replacement" {
+		t.Fatalf("replacement resolver file read: %q %v", contents, err)
+	}
+	_, err = os.ReadDir(directory)
+	requireDenied(t, "list resolver directory", err)
+	requireDenied(t, "write resolver file", os.WriteFile(path, []byte("overwritten"), 0600))
+	_, err = os.ReadFile(os.Getenv("ESPERANTA_REPLACEMENT_TEST_OUTSIDE"))
+	requireDenied(t, "read outside resolver directory", err)
 }
 
 func TestSandboxHelper(t *testing.T) {

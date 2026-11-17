@@ -16,17 +16,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 )
 
 // Policy is a one-shot sandbox configuration. Its zero value denies all
 // supported filesystem and network operations. Do not copy a Policy.
 type Policy struct {
-	mu     sync.Mutex
-	files  []string
-	ports  []uint16
-	dns    bool
-	frozen bool
+	mu        sync.Mutex
+	files     []string
+	fileTrees []string
+	ports     []uint16
+	dns       bool
+	frozen    bool
 }
 
 // AllowReadFile permits reading one existing regular file. It never permits
@@ -63,8 +65,12 @@ func (p *Policy) AllowPort(port int) error {
 
 // AllowDNS permits reading the Go resolver's three configuration files and
 // contacting DNS on port 53 (TCP and, where Landlock supports it, UDP).
-// Missing resolver files are left inaccessible rather than allowing their
-// parent directories. Use a Go resolver with PreferGo enabled.
+// Resolver files may be atomically replaced while the process is running, so
+// read-file access is granted to their resolved parent directories instead of
+// only to their initial inodes. This also permits reading other files beneath
+// those directories, subject to OS access controls, but not listing, writing or
+// executing them. Missing resolver files remain inaccessible.
+// Use a Go resolver with PreferGo enabled.
 func (p *Policy) AllowDNS() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -72,19 +78,35 @@ func (p *Policy) AllowDNS() error {
 		return errors.New("landlock policy is frozen")
 	}
 
-	var files []string
+	var directories []string
 	for _, path := range []string{"/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf"} {
-		if err := validateReadFile(path); err != nil {
+		directory, err := replaceableReadFileDirectory(path)
+		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
 			return err
 		}
-		files = append(files, path)
+		if !slices.Contains(directories, directory) {
+			directories = append(directories, directory)
+		}
 	}
-	p.files = append(p.files, files...)
+	p.fileTrees = append(p.fileTrees, directories...)
 	p.dns = true
 	return nil
+}
+
+// replaceableReadFileDirectory returns the directory whose read-file rule will
+// also cover replacement inodes at path.
+func replaceableReadFileDirectory(path string) (string, error) {
+	if err := validateReadFile(path); err != nil {
+		return "", err
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve read permission for %q: %w", path, err)
+	}
+	return filepath.Dir(resolved), nil
 }
 
 // Restrict irreversibly enables the policy process-wide, including no_new_privs.

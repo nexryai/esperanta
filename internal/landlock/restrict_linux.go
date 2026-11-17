@@ -27,9 +27,13 @@ func (p *Policy) restrict() error {
 		10: lsm.V10,
 	}
 	configuration := configs[min(version, 10)]
-	rules := make([]lsm.Rule, 0, len(p.files)+len(p.ports)+3)
+	rules := make([]lsm.Rule, 0, len(p.files)+len(p.fileTrees)+len(p.ports)+3)
 	for _, path := range p.files {
 		// ROFiles also grants execute permission. Grant only read instead.
+		rules = append(rules, lsm.PathAccess(llsys.AccessFSReadFile, path))
+	}
+	for _, path := range p.fileTrees {
+		// Directory rules also cover replacement inodes created within them.
 		rules = append(rules, lsm.PathAccess(llsys.AccessFSReadFile, path))
 	}
 	for _, port := range p.ports {
