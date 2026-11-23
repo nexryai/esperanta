@@ -143,7 +143,7 @@ jobs:
           # derive the real version from the tag in .copr/Makefile.
           sed -E -i \
             -e "s/^Version:.*/Version:        ${pkgver}/" \
-            -e "s|^Source0:.*|Source0:        https://github.com/nexryai/esperanta/archive/refs/tags/v${tag}.tar.gz|" \
+            -e "s|^Source0:.*|Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz|" \
             esperanta.spec
 
       - name: Commit metadata as a signed commit
