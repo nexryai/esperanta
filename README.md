@@ -5,6 +5,12 @@ A simple HTTP forward proxy written in Go.
 ## Installation
 
 ### Snap
+<a href="https://snapcraft.io/esperanta" target="_blank">
+   <img width="200px" height="auto" alt="Get it from the Snap Store" src=https://snapcraft.io/en/dark/install.svg />
+</a>
+
+　  
+
 
 ```sh
 sudo snap install esperanta
