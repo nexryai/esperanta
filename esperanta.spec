@@ -1,7 +1,7 @@
 # COPR builds this spec through the SCM "make srpm" method
 # (see .copr/Makefile).
 Name:           esperanta
-Version:        0.1.4
+Version:        0.1.5
 Release:        1%{?dist}
 Summary:        IP-restricted HTTP and HTTPS forward proxy
 
@@ -87,6 +87,9 @@ fi
 %config(noreplace) %{_sysconfdir}/esperanta/config.yaml
 
 %changelog
+* Mon Nov 23 2026 nexryai <nexryai@users.noreply.github.com> - 0.1.5-1
+- Add dedicated HTTP listeners for fixed HTTPS upstreams with configurable headers
+
 * Mon Nov 23 2026 nexryai <nexryai@users.noreply.github.com> - 0.1.4-1
 - Restrict upstream headers to explicitly configured domains
 
