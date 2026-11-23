@@ -7,7 +7,7 @@ A simple HTTP forward proxy written in Go.
 ### Snap
 
 ```sh
-sudo snap install --edge esperanta
+sudo snap install esperanta
 
 # Edit config
 sudo nano /var/snap/esperanta/current/config/config.yaml
@@ -15,6 +15,10 @@ sudo nano /var/snap/esperanta/current/config/config.yaml
 # Apply config
 sudo snap restart esperanta
 ```
+
+Tagged releases are published to the Snap Store `stable` channel. Builds from
+`main` are published to `edge` and can be installed with
+`sudo snap install --edge esperanta`.
 
 ### Debian and Ubuntu (APT)
 
@@ -167,8 +171,9 @@ git push origin v0.1.3
 
 The release workflow builds Linux archives, `.deb` packages and Arch Linux
 packages, then publishes the APT and pacman repositories to GitHub Pages. The
-Arch package metadata and RPM spec are committed back to `main` as a signed
-commit. COPR builds RPMs directly from the pushed tag using
+same tag publishes the Snap to the `stable` channel, while `main` builds go to
+`edge`. Arch package metadata and the RPM spec are committed back to `main` as
+a signed commit. COPR builds RPMs directly from the pushed tag using
 `.copr/Makefile` and `esperanta.spec`.
 
 GitHub Pages must use the "GitHub Actions" source. The repository also needs:
