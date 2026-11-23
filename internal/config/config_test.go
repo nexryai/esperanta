@@ -42,6 +42,17 @@ func TestLoadAndSourceACL(t *testing.T) {
 	}
 }
 
+func TestUpstreamHeadersLoad(t *testing.T) {
+	c, err := loadYAML(t, "allowed_sources: [127.0.0.1]\nupstream_headers:\n  User-Agent: Esperanta\n  x-origin-authorization: secret\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.UpstreamHeaders["User-Agent"] != "Esperanta" ||
+		c.UpstreamHeaders["x-origin-authorization"] != "secret" {
+		t.Fatalf("unexpected upstream headers: %#v", c.UpstreamHeaders)
+	}
+}
+
 func TestInvalidConfigurations(t *testing.T) {
 	for name, contents := range map[string]string{
 		"empty ACL":          "allowed_sources: []",
@@ -53,6 +64,10 @@ func TestInvalidConfigurations(t *testing.T) {
 		"invalid port":       "allowed_sources: [127.0.0.1]\nallowed_ports: [65536]",
 		"zero limit":         "allowed_sources: [127.0.0.1]\nmax_concurrent: 0",
 		"negative timeout":   "allowed_sources: [127.0.0.1]\ntunnel_timeout: -1s",
+		"invalid header":     "allowed_sources: [127.0.0.1]\nupstream_headers:\n  'Bad Header': value",
+		"forbidden header":   "allowed_sources: [127.0.0.1]\nupstream_headers:\n  Host: example.com",
+		"duplicate header":   "allowed_sources: [127.0.0.1]\nupstream_headers:\n  X-Test: one\n  x-test: two",
+		"invalid value":      "allowed_sources: [127.0.0.1]\nupstream_headers:\n  X-Test: \"line\\nbreak\"",
 		"oversized":          "allowed_sources: [127.0.0.1]\n#" + strings.Repeat("x", 1<<20),
 	} {
 		t.Run(name, func(t *testing.T) {

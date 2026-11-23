@@ -2,6 +2,8 @@
 
 A simple HTTP forward proxy written in Go.
 
+Documentation: <https://nexryai.github.io/esperanta/>
+
 ## Installation
 
 ### Snap
@@ -142,6 +144,7 @@ If a load balancer sits in front of the proxy, its IP address is the one checked
 | --- | --- |
 | `allowed_ports` | Restricts destination ports for HTTP forwarding and CONNECT |
 | `deny_private_destinations` | Blocks connections to private, loopback, link-local, shared, and other nonpublic IP addresses |
+| `upstream_headers` | Sets fixed headers on regular HTTP requests sent upstream; CONNECT is unaffected |
 | `max_concurrent` | Limits the combined number of HTTP requests and CONNECT tunnels handled concurrently |
 | `max_connections` | Limits client TCP connections, including idle connections |
 | `max_idle_connections` | Limits idle connections to destinations kept in the pool |
@@ -156,6 +159,12 @@ If a load balancer sits in front of the proxy, its IP address is the one checked
 Specify durations such as `10s` or `2m`. Omitted options use their default values.
 Restart the proxy to apply configuration changes.
 
+`upstream_headers` accepts a map of header names to values. Configured values
+replace headers supplied by clients, which allows a fixed origin authorization
+or User-Agent. Transport headers such as `Host`, `Content-Length`,
+`Transfer-Encoding`, `Connection` and `Proxy-Authorization` are rejected. The
+setting does not apply inside HTTPS CONNECT tunnels.
+
 The proxy checks the IP addresses returned by DNS for each destination and connects directly to a checked IP address.
 It also rejects DNS responses that contain a mix of public and nonpublic IP addresses. If you need to connect to internal services,
 set `deny_private_destinations: false`.
@@ -165,8 +174,8 @@ set `deny_private_destinations: false`.
 Push a `v<version>` tag, or run the `release` workflow manually with a tag:
 
 ```sh
-git tag -s v0.1.3 -m "esperanta 0.1.3"
-git push origin v0.1.3
+git tag -s v0.1.4 -m "esperanta 0.1.4"
+git push origin v0.1.4
 ```
 
 The release workflow builds Linux archives, `.deb` packages and Arch Linux

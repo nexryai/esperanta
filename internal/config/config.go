@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"net/netip"
 	"os"
 	"strconv"
@@ -14,21 +15,35 @@ import (
 )
 
 type Config struct {
-	Listen          string         `yaml:"listen"`
-	AllowedSources  []string       `yaml:"allowed_sources"`
-	AllowedPorts    []int          `yaml:"allowed_ports"`
-	DenyPrivate     bool           `yaml:"deny_private_destinations"`
-	MaxConcurrent   int            `yaml:"max_concurrent"`
-	MaxConnections  int            `yaml:"max_connections"`
-	MaxIdleConns    int            `yaml:"max_idle_connections"`
-	MaxIdlePerHost  int            `yaml:"max_idle_connections_per_host"`
-	DialTimeout     time.Duration  `yaml:"dial_timeout"`
-	HeaderTimeout   time.Duration  `yaml:"header_timeout"`
-	RequestTimeout  time.Duration  `yaml:"request_timeout"`
-	IdleTimeout     time.Duration  `yaml:"idle_timeout"`
-	TunnelTimeout   time.Duration  `yaml:"tunnel_timeout"`
-	ShutdownTimeout time.Duration  `yaml:"shutdown_timeout"`
-	Sources         []netip.Prefix `yaml:"-"`
+	Listen          string            `yaml:"listen"`
+	AllowedSources  []string          `yaml:"allowed_sources"`
+	AllowedPorts    []int             `yaml:"allowed_ports"`
+	DenyPrivate     bool              `yaml:"deny_private_destinations"`
+	UpstreamHeaders map[string]string `yaml:"upstream_headers"`
+	MaxConcurrent   int               `yaml:"max_concurrent"`
+	MaxConnections  int               `yaml:"max_connections"`
+	MaxIdleConns    int               `yaml:"max_idle_connections"`
+	MaxIdlePerHost  int               `yaml:"max_idle_connections_per_host"`
+	DialTimeout     time.Duration     `yaml:"dial_timeout"`
+	HeaderTimeout   time.Duration     `yaml:"header_timeout"`
+	RequestTimeout  time.Duration     `yaml:"request_timeout"`
+	IdleTimeout     time.Duration     `yaml:"idle_timeout"`
+	TunnelTimeout   time.Duration     `yaml:"tunnel_timeout"`
+	ShutdownTimeout time.Duration     `yaml:"shutdown_timeout"`
+	Sources         []netip.Prefix    `yaml:"-"`
+}
+
+var forbiddenUpstreamHeaders = map[string]struct{}{
+	"Connection":          {},
+	"Content-Length":      {},
+	"Host":                {},
+	"Keep-Alive":          {},
+	"Proxy-Authorization": {},
+	"Proxy-Connection":    {},
+	"TE":                  {},
+	"Trailer":             {},
+	"Transfer-Encoding":   {},
+	"Upgrade":             {},
 }
 
 func Defaults() Config {
@@ -116,6 +131,23 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("invalid destination port %d", p)
 		}
 	}
+	seenHeaders := make(map[string]struct{}, len(c.UpstreamHeaders))
+	for name, value := range c.UpstreamHeaders {
+		if !validHeaderName(name) {
+			return fmt.Errorf("invalid upstream header name %q", name)
+		}
+		canonical := http.CanonicalHeaderKey(name)
+		if _, forbidden := forbiddenUpstreamHeaders[canonical]; forbidden {
+			return fmt.Errorf("upstream header %q cannot be configured", canonical)
+		}
+		if _, duplicate := seenHeaders[canonical]; duplicate {
+			return fmt.Errorf("duplicate upstream header %q", canonical)
+		}
+		seenHeaders[canonical] = struct{}{}
+		if !validHeaderValue(value) {
+			return fmt.Errorf("invalid value for upstream header %q", canonical)
+		}
+	}
 	if c.MaxConcurrent < 1 || c.MaxConnections < 1 || c.MaxIdleConns < 1 || c.MaxIdlePerHost < 1 {
 		return fmt.Errorf("connection limits must be positive")
 	}
@@ -164,4 +196,31 @@ func (c Config) AllowsPort(port string) bool {
 		}
 	}
 	return false
+}
+
+func validHeaderName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
+		case c == '!', c == '#', c == '$', c == '%', c == '&', c == '\'', c == '*',
+			c == '+', c == '-', c == '.', c == '^', c == '_', c == '`', c == '|', c == '~':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func validHeaderValue(value string) bool {
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		if (c < 0x20 && c != '\t') || c == 0x7f {
+			return false
+		}
+	}
+	return true
 }

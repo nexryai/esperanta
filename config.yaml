@@ -11,6 +11,12 @@ allowed_ports: [80, 443]
 # 内部ネットワーク、loopback、link-local等への接続を拒否します。
 deny_private_destinations: true
 
+# HTTP転送時に上流へ必ず設定するヘッダーです。CONNECTトンネルには適用されません。
+# クライアントが同じヘッダーを送っていても、ここの値で置き換えます。
+# upstream_headers:
+#   User-Agent: "Esperanta"
+#   X-Origin-Authorization: "Bearer secret"
+
 max_concurrent: 1024
 max_connections: 2048
 max_idle_connections: 1024

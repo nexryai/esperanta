@@ -64,6 +64,9 @@ func New(c config.Config) *Proxy {
 			r.Out.Host = r.In.URL.Host
 			r.Out.Header.Del("Proxy-Authorization")
 			r.Out.Header.Del("Proxy-Connection")
+			for name, value := range p.c.UpstreamHeaders {
+				r.Out.Header.Set(name, value)
+			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			slog.Debug("upstream failed", "error", err)

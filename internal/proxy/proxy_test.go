@@ -105,6 +105,53 @@ func TestForwardHeadersAndConnectionReuse(t *testing.T) {
 	}
 }
 
+func TestUpstreamCustomHeaders(t *testing.T) {
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Values("X-Origin-Authorization"); len(got) != 1 || got[0] != "secret" {
+			t.Errorf("X-Origin-Authorization = %q", got)
+		}
+		if got := r.Header.Get("User-Agent"); got != "Esperanta" {
+			t.Errorf("User-Agent = %q", got)
+		}
+		fmt.Fprint(w, "ok")
+	}))
+	defer origin.Close()
+	c := localConfig(t, origin.Listener.Addr().String())
+	c.UpstreamHeaders = map[string]string{
+		"User-Agent":             "Esperanta",
+		"x-origin-authorization": "secret",
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	p := New(c)
+	defer p.Close()
+	server := httptest.NewServer(p)
+	defer server.Close()
+	proxyURL, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport, Timeout: 3 * time.Second}
+	request, err := http.NewRequest(http.MethodGet, origin.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("User-Agent", "client")
+	request.Header.Set("X-Origin-Authorization", "client")
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil || response.StatusCode != http.StatusOK || string(body) != "ok" {
+		t.Fatalf("custom header request failed: %s %q %v", response.Status, body, err)
+	}
+}
+
 func TestPolicyAndOverload(t *testing.T) {
 	c := localConfig(t, "127.0.0.1:8081")
 	c.MaxConcurrent = 1
