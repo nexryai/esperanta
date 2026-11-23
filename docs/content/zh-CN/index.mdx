@@ -1,0 +1,21 @@
+---
+title: "Esperanta 代理服务器"
+description: "注重安全的小型 HTTP 和 HTTPS 正向代理。"
+---
+
+## 策略明确的代理
+
+Esperanta 是用于 HTTP 和 HTTPS CONNECT 的正向代理。它使用 Go 编写，只监听配置的地址，仅接受明确 IP 范围的客户端，并限制目标端口和地址。
+
+守护进程以非特权身份运行。在 Linux 上，它加载配置后应用失败即关闭的 Landlock 文件系统和 TCP 策略。发行版 systemd 服务以 `DynamicUser` 运行，没有 capabilities，并启用大量 systemd 沙箱选项。
+
+## 从这里开始
+
+1. 通过 APT、COPR、pacman、Snap 或源码[安装 Esperanta](/zh-CN/installation)。
+2. 在将监听地址暴露到 loopback 之外前阅读[配置参考](/zh-CN/configuration)。
+3. 从 HTTP 和 HTTPS 客户端[使用代理](/zh-CN/usage)。
+4. 作为服务部署时查看[安全与沙箱](/zh-CN/security)。
+
+## Esperanta 不做什么
+
+Esperanta 不是开放代理、TLS 拦截代理、缓存代理或软件包仓库服务器。HTTPS CONNECT 流量保持端到端加密，自定义上游标头只适用于普通 HTTP 转发。

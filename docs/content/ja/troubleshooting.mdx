@@ -1,0 +1,67 @@
+---
+title: "トラブルシューティング"
+description: "起動、アクセス、DNS、上流の障害を診断します。"
+---
+
+## サービスが起動しない
+
+設定を検証し、ユニットログを確認します。
+
+```sh
+esperanta --config /etc/esperanta/config.yaml --check
+systemctl status esperanta
+journalctl -u esperanta -n 100 --no-pager
+```
+
+よくある原因は、空の `allowed_sources`、特権ポートの待ち受け、無効な duration、Landlock ABI 4 以上がないカーネルです。
+
+## クライアントがすぐ切断される
+
+TCP ピアが `allowed_sources` に含まれていません。転送ヘッダーではなく、サーバーが見ている接続元アドレスを確認してください。ロードバランサーが前段にある場合は、そのアドレスを許可する必要があります。
+
+## 403 が返る
+
+Esperanta の 403 は通常、接続先ポートが `allowed_ports` にないことを意味します。CONNECT の 400 は、ターゲットが `host:port` でない、認証情報を含む、またはリクエストボディを含む場合です。
+
+## 502 が返る
+
+502 は接続先へ到達できなかったことを意味します。DNS、`deny_private_destinations`、接続先の可用性、`dial_timeout` を確認します。診断時はデバッグログを有効にします。
+
+```sh
+sudo systemctl edit esperanta
+```
+
+一時的な環境変数オーバーライドを追加します。
+
+```ini
+[Service]
+Environment=GODEBUG=netdns=go
+```
+
+その後ジャーナルを確認し、障害対応後にデバッグ設定を削除します。
+
+## Landlock エラー
+
+Landlock が利用できない、または TCP 制限に対応していない場合、Esperanta は意図的に起動を拒否します。カーネルバージョンと、別のサンドボックスが Landlock システムコールを妨げていないか確認します。
+
+```sh
+grep landlock /boot/config-$(uname -r)
+journalctl -u esperanta -n 50 --no-pager
+```
+
+## Snap の設定
+
+Snap の設定ファイルはパッケージ版と異なる場所にあります。
+
+```sh
+sudo nano /var/snap/esperanta/current/config/config.yaml
+sudo snap restart esperanta
+```
+
+## リポジトリ署名鍵
+
+公開鍵のフィンガープリントはパッケージリポジトリと一緒に公開されます。鍵の検証に失敗した場合は、インポートした鍵と公開フィンガープリントを比較します。
+
+```sh
+curl -fsSL https://nexryai.github.io/esperanta/esperanta-archive-keyring.fingerprint
+```

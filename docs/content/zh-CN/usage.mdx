@@ -1,0 +1,52 @@
+---
+title: "使用代理"
+description: "为 HTTP 转发和 HTTPS CONNECT 配置客户端。"
+---
+
+## HTTP 转发
+
+向代理解析绝对 URL。Esperanta 连接目标、重写请求目标并在不缓存的情况下转发响应。
+
+```sh
+curl --noproxy '' --proxy http://127.0.0.1:8080 http://example.com/
+```
+
+## HTTPS CONNECT
+
+HTTPS 客户端使用 HTTP CONNECT 方法。TLS 会话直接与目标建立，Esperanta 不会终止或检查它。
+
+```sh
+curl --noproxy '' --proxy http://127.0.0.1:8080 https://example.com/
+```
+
+## 上游标头
+
+对于普通 HTTP 转发，配置的 `upstream_headers` 会设置到每个请求，并替换客户端发送的同名值。
+
+```yaml
+upstream_headers:
+  User-Agent: "Esperanta"
+  X-Origin-Authorization: "Bearer secret"
+```
+
+使用会回显请求标头的 HTTP 端点验证结果。不要在 shell 历史中留下生产密钥，应从权限为 0600 的配置文件读取。
+
+```sh
+curl --noproxy '' --proxy http://127.0.0.1:8080 \
+  -H 'X-Origin-Authorization: client-value' \
+  http://127.0.0.1:8000/debug/headers
+```
+
+CONNECT 隧道是不透明的。TLS 客户端的标头由 TLS 客户端控制，而不是代理。
+
+## 代理环境变量
+
+许多命令行工具会读取标准代理变量。如果只有部分命令需要代理，应仅在当前 shell 中设置，而不要导出到整个系统。
+
+```sh
+HTTP_PROXY=http://127.0.0.1:8080 \
+HTTPS_PROXY=http://127.0.0.1:8080 \
+curl https://example.com/
+```
+
+某些工具会忽略小写变量或有自己的代理配置。行为不明确时应显式配置客户端。

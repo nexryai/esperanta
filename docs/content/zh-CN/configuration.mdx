@@ -1,0 +1,76 @@
+---
+title: "配置"
+description: "所有 YAML 选项及其实际代理行为。"
+---
+
+## 完整示例
+
+```yaml
+listen: "127.0.0.1:8080"
+allowed_sources:
+  - "127.0.0.1"
+  - "::1"
+allowed_ports: [80, 443]
+deny_private_destinations: true
+
+upstream_headers:
+  User-Agent: "Esperanta"
+  X-Origin-Authorization: "Bearer secret"
+
+max_concurrent: 1024
+max_connections: 2048
+max_idle_connections: 1024
+max_idle_connections_per_host: 64
+
+dial_timeout: 10s
+header_timeout: 10s
+request_timeout: 2m
+idle_timeout: 90s
+tunnel_timeout: 1h
+shutdown_timeout: 15s
+```
+
+配置会被严格解析：未知字段、重复字段和多个 YAML 文档都会被拒绝。`--check` 只验证文件而不启动代理。
+
+## 监听和客户端
+
+`listen` 必须是字面 IPv4 或 IPv6 地址，端口范围为 1024 到 65535。非特权进程不能直接绑定特权端口；需要 80 或 443 时应使用反向代理或端口重定向。
+
+`allowed_sources` 接受单个地址和 CIDR。其他 TCP 对端会在 HTTP 解析前被关闭。代理只使用 TCP 对端地址，不信任 `X-Forwarded-For` 等标头。空列表无效。
+
+## 目标
+
+`allowed_ports` 同时适用于普通 HTTP 转发和 CONNECT。未列出的目标端口返回 403。
+
+`deny_private_destinations: true` 拒绝 loopback、私有、link-local、共享、文档、组播等非公开目标。包含公开和非公开地址混合的 DNS 响应会整体拒绝。
+
+## 上游标头
+
+`upstream_headers` 是可选的标头名到值的映射。Esperanta 在发送普通 HTTP 请求时设置这些标头。配置的标头会替换客户端提供的同名值，适合固定源站认证或 User-Agent。
+
+```yaml
+upstream_headers:
+  User-Agent: "Esperanta"
+  Authorization: "Bearer replace-with-secret"
+```
+
+`Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Proxy-Connection`、`Proxy-Authorization`、`Keep-Alive`、`TE`、`Trailer` 和 `Upgrade` 是传输控制标头，不能配置。标头名必须是有效 HTTP token，值不能包含控制字符，大小写不敏感的重名也会被拒绝。
+
+CONNECT 是加密字节隧道。Esperanta 无法向 TLS 会话内添加 HTTP 标头，因此 `upstream_headers` 不适用于 CONNECT。
+
+## 限制和超时
+
+| 选项 | 行为 |
+| --- | --- |
+| `max_concurrent` | 同时处理的 HTTP 请求与 CONNECT 隧道总数 |
+| `max_connections` | 包括空闲连接在内的客户端 TCP 连接数 |
+| `max_idle_connections` | 连接池中保留的目标空闲连接数 |
+| `max_idle_connections_per_host` | 每个主机的目标空闲连接数 |
+| `dial_timeout` | DNS 解析和连接建立 |
+| `header_timeout` | 客户端和目标响应标头的等待时间 |
+| `request_timeout` | 普通 HTTP 请求的总时长 |
+| `idle_timeout` | 客户端和目标空闲连接时间 |
+| `tunnel_timeout` | CONNECT 隧道最大生命周期，而非空闲时间 |
+| `shutdown_timeout` | 优雅关闭期限 |
+
+值使用 `10s`、`2m`、`1h` 等 Go duration 格式。所有时长和限制必须为正数。

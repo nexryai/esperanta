@@ -1,0 +1,102 @@
+---
+title: "安装"
+description: "通过 APT、COPR、pacman、Snap 或源码安装 Esperanta。"
+---
+
+## Debian 和 Ubuntu
+
+APT 与 pacman 仓库使用同一把签名密钥。
+
+```sh
+curl -fsSL https://nexryai.github.io/esperanta/esperanta-archive-keyring.asc \
+  | sudo gpg --dearmor -o /usr/share/keyrings/esperanta-archive-keyring.gpg
+
+echo "deb [signed-by=/usr/share/keyrings/esperanta-archive-keyring.gpg] https://nexryai.github.io/esperanta/ stable main" \
+  | sudo tee /etc/apt/sources.list.d/esperanta.list
+
+sudo apt update
+sudo apt install esperanta
+```
+
+编辑 `/etc/esperanta/config.yaml`，然后启用服务。
+
+```sh
+sudo systemctl enable --now esperanta
+```
+
+## Fedora、RHEL 及衍生版
+
+COPR 直接从发布标签构建 RPM 软件包。
+
+```sh
+sudo dnf copr enable nexryai/esperanta
+sudo dnf install esperanta
+sudo systemctl enable --now esperanta
+```
+
+## Arch Linux
+
+签名的 pacman 仓库包含 `x86_64` 和 `aarch64` 软件包。
+
+```sh
+curl -fsSL https://nexryai.github.io/esperanta/pacman/esperanta-archive-keyring.asc \
+  -o /tmp/esperanta-archive-keyring.asc
+sudo pacman-key --add /tmp/esperanta-archive-keyring.asc
+
+key=$(gpg --with-colons --import-options show-only \
+  --import /tmp/esperanta-archive-keyring.asc |
+  awk -F: '/^fpr:/{print $10; exit}')
+sudo pacman-key --lsign-key "$key"
+```
+
+将仓库添加到 `/etc/pacman.conf`。
+
+```ini
+[esperanta]
+SigLevel = Required DatabaseRequired
+Server = https://nexryai.github.io/esperanta/pacman/$arch
+```
+
+然后安装软件包。
+
+```sh
+sudo pacman -Syu
+sudo pacman -S esperanta
+sudo systemctl enable --now esperanta
+```
+
+## Snap
+
+带标签的发布使用 `stable` 通道，`main` 构建使用 `edge` 通道。
+
+```sh
+sudo snap install esperanta
+```
+
+Snap 配置位于 `/var/snap/esperanta/current/config/config.yaml`，修改后重新启动。
+
+```sh
+sudo snap restart esperanta
+```
+
+## 从源码安装
+
+systemd 单元以动态非特权用户运行。
+
+```sh
+go build -trimpath -ldflags='-s -w' -o bin/esperanta ./cmd/esperanta
+
+sudo install -Dm0755 bin/esperanta /usr/bin/esperanta
+sudo install -Dm0644 systemd/esperanta.service /usr/lib/systemd/system/esperanta.service
+sudo install -Dm0644 config.yaml /etc/esperanta/config.yaml
+sudo systemctl daemon-reload
+sudo systemctl enable --now esperanta
+```
+
+## 验证配置
+
+重启现有部署前运行验证命令。
+
+```sh
+esperanta --config /etc/esperanta/config.yaml --check
+```

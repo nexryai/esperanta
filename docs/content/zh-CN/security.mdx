@@ -1,0 +1,45 @@
+---
+title: "安全与沙箱"
+description: "客户端限制、目标验证和 Linux 沙箱层。"
+---
+
+## 默认姿态
+
+示例配置只监听 loopback，并且只接受 loopback 客户端。在来源限制和防火墙配置正确前，请保持该默认值。
+
+`allowed_sources` 是主要认证边界，但不能代替用户认证。不要把无限制代理暴露到公网。能够访问任意公网目标的代理可能被用于匿名化和对外扫描。
+
+## 目标验证
+
+Esperanta 在连接前解析目标，根据私有目标策略检查返回的每个地址，然后直接连接已验证的字面地址。这样验证与连接之间不会发生第二次 DNS 查询。
+
+启用 `deny_private_destinations` 后，私有目标、非公开网段、带作用域的 IPv6 地址以及公开与非公开混合的 DNS 响应都会被拒绝。
+
+## Landlock
+
+Linux 上需要 Landlock ABI 4 或更高版本。程序先打开监听套接字，然后对整个进程应用策略：
+
+- 出站 TCP 限制为 `allowed_ports`。
+- DNS 使用 TCP，在 Landlock ABI 10+ 上还使用 UDP 53。
+- 解析器配置文件只读。
+- 写入、执行和无关文件系统访问被拒绝。
+
+Landlock 应用失败会导致启动失败，不会回退到无沙箱运行。
+
+## systemd
+
+安装的单元使用 `DynamicUser=yes`、空 capability 集合和 `NoNewPrivileges=yes`。它还启用只读系统、私有临时目录和设备、进程与内核保护、系统调用允许列表以及禁止可写可执行内存。
+
+可以检查运行中的有效沙箱：
+
+```sh
+systemd-analyze security esperanta.service
+```
+
+## Snap
+
+Snap 使用严格 confinement，并在启动前切换到非特权身份。Snap 沙箱内仍启用 Landlock。Snap 只有 `network` 和 `network-bind` 接口。
+
+## 日志和秘密
+
+代理不会记录请求体或配置的标头值。包含认证标头的 `/etc/esperanta/config.yaml` 应作为秘密处理并限制权限。

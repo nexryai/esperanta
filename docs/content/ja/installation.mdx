@@ -1,0 +1,102 @@
+---
+title: "インストール"
+description: "APT、COPR、pacman、Snap、ソースから Esperanta を導入します。"
+---
+
+## Debian / Ubuntu
+
+APT と pacman のリポジトリは同じ署名鍵を使います。
+
+```sh
+curl -fsSL https://nexryai.github.io/esperanta/esperanta-archive-keyring.asc \
+  | sudo gpg --dearmor -o /usr/share/keyrings/esperanta-archive-keyring.gpg
+
+echo "deb [signed-by=/usr/share/keyrings/esperanta-archive-keyring.gpg] https://nexryai.github.io/esperanta/ stable main" \
+  | sudo tee /etc/apt/sources.list.d/esperanta.list
+
+sudo apt update
+sudo apt install esperanta
+```
+
+`/etc/esperanta/config.yaml` を編集してからサービスを有効化します。
+
+```sh
+sudo systemctl enable --now esperanta
+```
+
+## Fedora / RHEL 系
+
+COPR はリリースタグから直接 RPM パッケージをビルドします。
+
+```sh
+sudo dnf copr enable nexryai/esperanta
+sudo dnf install esperanta
+sudo systemctl enable --now esperanta
+```
+
+## Arch Linux
+
+署名済み pacman リポジトリには `x86_64` と `aarch64` のパッケージがあります。
+
+```sh
+curl -fsSL https://nexryai.github.io/esperanta/pacman/esperanta-archive-keyring.asc \
+  -o /tmp/esperanta-archive-keyring.asc
+sudo pacman-key --add /tmp/esperanta-archive-keyring.asc
+
+key=$(gpg --with-colons --import-options show-only \
+  --import /tmp/esperanta-archive-keyring.asc |
+  awk -F: '/^fpr:/{print $10; exit}')
+sudo pacman-key --lsign-key "$key"
+```
+
+`/etc/pacman.conf` にリポジトリを追加します。
+
+```ini
+[esperanta]
+SigLevel = Required DatabaseRequired
+Server = https://nexryai.github.io/esperanta/pacman/$arch
+```
+
+その後パッケージをインストールします。
+
+```sh
+sudo pacman -Syu
+sudo pacman -S esperanta
+sudo systemctl enable --now esperanta
+```
+
+## Snap
+
+タグ付きリリースは `stable` チャンネル、`main` のビルドは `edge` チャンネルを使います。
+
+```sh
+sudo snap install esperanta
+```
+
+Snap の設定は `/var/snap/esperanta/current/config/config.yaml` です。編集後に再起動します。
+
+```sh
+sudo snap restart esperanta
+```
+
+## ソースから
+
+systemd ユニットは動的な非特権ユーザーとして動作します。
+
+```sh
+go build -trimpath -ldflags='-s -w' -o bin/esperanta ./cmd/esperanta
+
+sudo install -Dm0755 bin/esperanta /usr/bin/esperanta
+sudo install -Dm0644 systemd/esperanta.service /usr/lib/systemd/system/esperanta.service
+sudo install -Dm0644 config.yaml /etc/esperanta/config.yaml
+sudo systemctl daemon-reload
+sudo systemctl enable --now esperanta
+```
+
+## 設定の検証
+
+既存の環境を再起動する前に検証コマンドを実行します。
+
+```sh
+esperanta --config /etc/esperanta/config.yaml --check
+```

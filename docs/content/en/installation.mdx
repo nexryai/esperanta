@@ -1,0 +1,102 @@
+---
+title: "Installation"
+description: "Install Esperanta from APT, COPR, pacman, Snap or source."
+---
+
+## Debian and Ubuntu
+
+The APT and pacman repositories share one signing key.
+
+```sh
+curl -fsSL https://nexryai.github.io/esperanta/esperanta-archive-keyring.asc \
+  | sudo gpg --dearmor -o /usr/share/keyrings/esperanta-archive-keyring.gpg
+
+echo "deb [signed-by=/usr/share/keyrings/esperanta-archive-keyring.gpg] https://nexryai.github.io/esperanta/ stable main" \
+  | sudo tee /etc/apt/sources.list.d/esperanta.list
+
+sudo apt update
+sudo apt install esperanta
+```
+
+Edit `/etc/esperanta/config.yaml`, then enable the service:
+
+```sh
+sudo systemctl enable --now esperanta
+```
+
+## Fedora, RHEL and derivatives
+
+COPR builds RPM packages directly from release tags.
+
+```sh
+sudo dnf copr enable nexryai/esperanta
+sudo dnf install esperanta
+sudo systemctl enable --now esperanta
+```
+
+## Arch Linux
+
+The signed pacman repository contains `x86_64` and `aarch64` packages.
+
+```sh
+curl -fsSL https://nexryai.github.io/esperanta/pacman/esperanta-archive-keyring.asc \
+  -o /tmp/esperanta-archive-keyring.asc
+sudo pacman-key --add /tmp/esperanta-archive-keyring.asc
+
+key=$(gpg --with-colons --import-options show-only \
+  --import /tmp/esperanta-archive-keyring.asc |
+  awk -F: '/^fpr:/{print $10; exit}')
+sudo pacman-key --lsign-key "$key"
+```
+
+Add the repository to `/etc/pacman.conf`:
+
+```ini
+[esperanta]
+SigLevel = Required DatabaseRequired
+Server = https://nexryai.github.io/esperanta/pacman/$arch
+```
+
+Then install the package:
+
+```sh
+sudo pacman -Syu
+sudo pacman -S esperanta
+sudo systemctl enable --now esperanta
+```
+
+## Snap
+
+Tagged releases use the `stable` channel. Builds from `main` use `edge`.
+
+```sh
+sudo snap install esperanta
+```
+
+The Snap configuration is `/var/snap/esperanta/current/config/config.yaml`. Restart it after editing:
+
+```sh
+sudo snap restart esperanta
+```
+
+## From source
+
+The systemd unit runs as a dynamic, unprivileged user.
+
+```sh
+go build -trimpath -ldflags='-s -w' -o bin/esperanta ./cmd/esperanta
+
+sudo install -Dm0755 bin/esperanta /usr/bin/esperanta
+sudo install -Dm0644 systemd/esperanta.service /usr/lib/systemd/system/esperanta.service
+sudo install -Dm0644 config.yaml /etc/esperanta/config.yaml
+sudo systemctl daemon-reload
+sudo systemctl enable --now esperanta
+```
+
+## Verify the configuration
+
+Run the validation command before restarting an existing deployment:
+
+```sh
+esperanta --config /etc/esperanta/config.yaml --check
+```

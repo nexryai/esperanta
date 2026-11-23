@@ -1,0 +1,11 @@
+{
+  "title": "Esperanta",
+  "pages": [
+    "index",
+    "installation",
+    "configuration",
+    "usage",
+    "security",
+    "troubleshooting"
+  ]
+}

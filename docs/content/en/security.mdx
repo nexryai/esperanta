@@ -1,0 +1,45 @@
+---
+title: "Security and sandboxing"
+description: "Client restrictions, destination checks and Linux sandbox layers."
+---
+
+## Default posture
+
+The sample configuration listens only on loopback and accepts only loopback clients. Keep that default until source restrictions and the firewall are correct.
+
+`allowed_sources` is the primary authentication boundary. It is not a substitute for user authentication, so do not expose an unrestricted proxy to the public Internet. A proxy that reaches arbitrary public destinations can be abused for anonymization and outbound scanning.
+
+## Destination validation
+
+Esperanta resolves each destination before connecting, checks every returned address against the private-destination policy, and dials the validated literal address. This avoids a second DNS lookup between validation and connection.
+
+Private destinations, non-public ranges, scoped IPv6 addresses and mixed public/non-public DNS answers are denied when `deny_private_destinations` is enabled.
+
+## Landlock
+
+On Linux, Esperanta requires Landlock ABI 4 or newer. It opens its listener before enforcement and then applies a process-wide policy:
+
+- Outbound TCP is limited to `allowed_ports`.
+- DNS uses TCP and, on Landlock ABI 10+, UDP port 53.
+- Resolver configuration files are read-only.
+- Writes, execution and unrelated filesystem access are denied.
+
+Landlock enforcement failure is fatal. There is no unsandboxed fallback.
+
+## systemd
+
+The installed unit uses `DynamicUser=yes`, an empty capability set and `NoNewPrivileges=yes`. It also enables a read-only system, private temporary directories and devices, process and kernel protections, a system call allow-list, and write-execute memory denial.
+
+Check the effective sandbox on a running system:
+
+```sh
+systemd-analyze security esperanta.service
+```
+
+## Snap
+
+The Snap uses strict confinement and drops to an unprivileged identity before starting. Landlock remains enabled inside the Snap sandbox. The Snap has only the `network` and `network-bind` interfaces.
+
+## Logging and secrets
+
+The proxy does not log request bodies or configured header values. Treat `/etc/esperanta/config.yaml` as a secret when it contains an authorization header, and restrict its permissions accordingly.

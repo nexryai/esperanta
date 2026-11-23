@@ -1,0 +1,76 @@
+---
+title: "Configuration"
+description: "Every YAML option and its actual proxy behavior."
+---
+
+## Complete example
+
+```yaml
+listen: "127.0.0.1:8080"
+allowed_sources:
+  - "127.0.0.1"
+  - "::1"
+allowed_ports: [80, 443]
+deny_private_destinations: true
+
+upstream_headers:
+  User-Agent: "Esperanta"
+  X-Origin-Authorization: "Bearer secret"
+
+max_concurrent: 1024
+max_connections: 2048
+max_idle_connections: 1024
+max_idle_connections_per_host: 64
+
+dial_timeout: 10s
+header_timeout: 10s
+request_timeout: 2m
+idle_timeout: 90s
+tunnel_timeout: 1h
+shutdown_timeout: 15s
+```
+
+The file is decoded strictly: unknown fields, duplicate fields and multiple YAML documents are rejected. Passing `--check` validates the file without starting the proxy.
+
+## Listener and clients
+
+`listen` must be a literal IPv4 or IPv6 address and a port from 1024 through 65535. An unprivileged process cannot bind privileged ports directly; use a reverse proxy or port redirection if port 80 or 443 is required.
+
+`allowed_sources` accepts individual addresses and CIDR ranges. Connections from other TCP peers are closed before HTTP parsing. The proxy uses the TCP peer address and does not trust `X-Forwarded-For` or similar headers. An empty list is invalid.
+
+## Destinations
+
+`allowed_ports` applies to both regular HTTP forwarding and CONNECT. A destination port that is not listed returns 403.
+
+`deny_private_destinations: true` rejects loopback, private, link-local, shared, documentation, multicast and other non-public destinations. DNS answers containing a mix of public and non-public addresses are rejected as a whole.
+
+## Upstream headers
+
+`upstream_headers` is an optional map of header names to values. Esperanta applies these headers to regular HTTP requests sent upstream. A configured header replaces any value supplied by the client, which is useful for static origin authorization or a fixed User-Agent.
+
+```yaml
+upstream_headers:
+  User-Agent: "Esperanta"
+  Authorization: "Bearer replace-with-secret"
+```
+
+The following headers are rejected because they are transport metadata: `Host`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Proxy-Connection`, `Proxy-Authorization`, `Keep-Alive`, `TE`, `Trailer` and `Upgrade`. Names must be valid HTTP tokens; values must not contain control characters. Duplicate case-insensitive names are rejected.
+
+CONNECT is an encrypted byte tunnel. Esperanta cannot add HTTP headers inside a TLS session, so `upstream_headers` does not apply to CONNECT traffic.
+
+## Limits and timeouts
+
+| Option | Behavior |
+| --- | --- |
+| `max_concurrent` | Combined in-flight HTTP requests and CONNECT tunnels |
+| `max_connections` | Accepted client TCP connections, including idle ones |
+| `max_idle_connections` | Idle destination connections retained in the pool |
+| `max_idle_connections_per_host` | Idle destination connections per host |
+| `dial_timeout` | DNS lookup and connection establishment |
+| `header_timeout` | Client and destination response headers |
+| `request_timeout` | Total duration of a regular HTTP request |
+| `idle_timeout` | Idle client and destination connections |
+| `tunnel_timeout` | Maximum CONNECT tunnel lifetime, not idle time |
+| `shutdown_timeout` | Graceful shutdown deadline |
+
+Values use Go duration syntax such as `10s`, `2m` or `1h`. All durations and limits must be positive.

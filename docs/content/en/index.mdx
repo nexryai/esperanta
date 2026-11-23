@@ -1,0 +1,21 @@
+---
+title: "Esperanta proxy"
+description: "A small, security-focused HTTP and HTTPS forward proxy."
+---
+
+## A narrow proxy with explicit policy
+
+Esperanta is a forward proxy for HTTP and HTTPS CONNECT traffic. It is written in Go, listens only on configured addresses, accepts clients from explicit IP ranges and restricts the destination ports and addresses they can reach.
+
+The daemon runs unprivileged. On Linux it applies a fail-closed Landlock filesystem and TCP policy after loading its configuration. The packaged systemd service also runs as a `DynamicUser` with no capabilities and a broad set of systemd sandboxing options.
+
+## Start here
+
+1. [Install Esperanta](/en/installation) from APT, COPR, pacman, Snap or source.
+2. Read the [configuration reference](/en/configuration) before exposing the listener beyond loopback.
+3. [Use the proxy](/en/usage) for HTTP and HTTPS clients.
+4. Review [security and sandboxing](/en/security) when deploying it as a service.
+
+## What Esperanta does not do
+
+Esperanta is not an open proxy, a TLS interception proxy, a caching proxy or a package repository server. HTTPS CONNECT traffic remains encrypted end to end, and custom upstream headers apply only to regular HTTP forwarding.

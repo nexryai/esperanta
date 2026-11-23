@@ -1,0 +1,67 @@
+---
+title: "Troubleshooting"
+description: "Diagnose startup, access, DNS and upstream failures."
+---
+
+## The service does not start
+
+Validate the configuration and inspect the unit logs:
+
+```sh
+esperanta --config /etc/esperanta/config.yaml --check
+systemctl status esperanta
+journalctl -u esperanta -n 100 --no-pager
+```
+
+Common causes are an empty `allowed_sources`, a privileged listener port, an invalid duration, or a kernel without Landlock ABI 4 or newer.
+
+## Clients are disconnected immediately
+
+The TCP peer is not covered by `allowed_sources`. Check the source address seen by the server, not a forwarding header. If a load balancer is in front of Esperanta, its address must be allowed.
+
+## 403 responses
+
+A 403 from Esperanta usually means the destination port is not in `allowed_ports`. A 400 for CONNECT means the target is not `host:port`, includes credentials, or includes a request body.
+
+## 502 responses
+
+A 502 means the destination could not be reached. Check DNS, `deny_private_destinations`, destination availability and the `dial_timeout`. Start the service with debug logs when diagnosing:
+
+```sh
+sudo systemctl edit esperanta
+```
+
+Add a temporary environment override:
+
+```ini
+[Service]
+Environment=GODEBUG=netdns=go
+```
+
+Then inspect the journal. Remove debugging overrides after the incident.
+
+## Landlock errors
+
+Esperanta intentionally fails closed if Landlock is unavailable or lacks TCP restrictions. Check the kernel version and whether another sandbox blocks Landlock syscalls:
+
+```sh
+grep landlock /boot/config-$(uname -r)
+journalctl -u esperanta -n 50 --no-pager
+```
+
+## Snap configuration
+
+The Snap configuration lives at a different path from package installations:
+
+```sh
+sudo nano /var/snap/esperanta/current/config/config.yaml
+sudo snap restart esperanta
+```
+
+## Repository signing key
+
+The public key fingerprint is published with the package repositories. If key verification fails, compare the imported key with the published fingerprint:
+
+```sh
+curl -fsSL https://nexryai.github.io/esperanta/esperanta-archive-keyring.fingerprint
+```

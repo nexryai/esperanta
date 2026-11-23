@@ -1,0 +1,76 @@
+---
+title: "設定"
+description: "すべての YAML オプションと実際のプロキシ動作。"
+---
+
+## 完全な例
+
+```yaml
+listen: "127.0.0.1:8080"
+allowed_sources:
+  - "127.0.0.1"
+  - "::1"
+allowed_ports: [80, 443]
+deny_private_destinations: true
+
+upstream_headers:
+  User-Agent: "Esperanta"
+  X-Origin-Authorization: "Bearer secret"
+
+max_concurrent: 1024
+max_connections: 2048
+max_idle_connections: 1024
+max_idle_connections_per_host: 64
+
+dial_timeout: 10s
+header_timeout: 10s
+request_timeout: 2m
+idle_timeout: 90s
+tunnel_timeout: 1h
+shutdown_timeout: 15s
+```
+
+ファイルは厳格にデコードされ、未知のフィールド、重複フィールド、複数 YAML ドキュメントは拒否されます。`--check` はプロキシを起動せずに設定を検証します。
+
+## 待ち受けとクライアント
+
+`listen` はリテラルの IPv4 / IPv6 アドレスと 1024 から 65535 のポートを指定します。非特権プロセスは特権ポートを直接バインドできないため、80 / 443 が必要な場合はリバースプロキシやポートリダイレクトを使用します。
+
+`allowed_sources` は個別アドレスと CIDR を受け付けます。それ以外の TCP ピアは HTTP 解析前に切断されます。プロキシは TCP ピアのアドレスだけを使い、`X-Forwarded-For` などのヘッダーを信頼しません。空のリストは無効です。
+
+## 接続先
+
+`allowed_ports` は通常の HTTP 転送と CONNECT の両方に適用されます。リストにない接続先ポートは 403 を返します。
+
+`deny_private_destinations: true` は loopback、プライベート、link-local、共有、ドキュメント用、マルチキャストなどの非公開接続先を拒否します。公開アドレスと非公開アドレスが混在する DNS 応答は、全体として拒否されます。
+
+## 上流ヘッダー
+
+`upstream_headers` はヘッダー名と値の任意のマップです。Esperanta は通常の HTTP リクエストを上流へ送る際にこれらのヘッダーを設定します。設定したヘッダーはクライアントが送った同じ名前の値を置き換えるため、固定のオリジン認証や User-Agent に利用できます。
+
+```yaml
+upstream_headers:
+  User-Agent: "Esperanta"
+  Authorization: "Bearer replace-with-secret"
+```
+
+`Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Proxy-Connection`、`Proxy-Authorization`、`Keep-Alive`、`TE`、`Trailer`、`Upgrade` はトランスポートの制御用なので設定できません。ヘッダー名は有効な HTTP トークンである必要があり、値に制御文字は使えません。大文字小文字を無視した重複名も拒否されます。
+
+CONNECT は暗号化されたバイトトンネルです。Esperanta は TLS セッション内に HTTP ヘッダーを追加できないため、`upstream_headers` は CONNECT には適用されません。
+
+## 制限とタイムアウト
+
+| オプション | 動作 |
+| --- | --- |
+| `max_concurrent` | 同時に処理する HTTP リクエストと CONNECT トンネルの合計 |
+| `max_connections` | アイドルを含むクライアント TCP 接続数 |
+| `max_idle_connections` | プールに保持する接続先のアイドル接続数 |
+| `max_idle_connections_per_host` | ホストごとの接続先アイドル接続数 |
+| `dial_timeout` | DNS 解決と接続確立の制限時間 |
+| `header_timeout` | クライアントと接続先のレスポンスヘッダー待ち時間 |
+| `request_timeout` | 通常 HTTP リクエストの合計時間 |
+| `idle_timeout` | クライアントと接続先のアイドル時間 |
+| `tunnel_timeout` | CONNECT トンネルの最大寿命（アイドル時間ではない） |
+| `shutdown_timeout` | グレースフルシャットダウンの期限 |
+
+値は `10s`、`2m`、`1h` などの Go duration 形式です。すべての時間と制限値は正の値である必要があります。

@@ -1,0 +1,67 @@
+---
+title: "故障排查"
+description: "诊断启动、访问、DNS 和上游故障。"
+---
+
+## 服务无法启动
+
+验证配置并查看单元日志：
+
+```sh
+esperanta --config /etc/esperanta/config.yaml --check
+systemctl status esperanta
+journalctl -u esperanta -n 100 --no-pager
+```
+
+常见原因包括空的 `allowed_sources`、特权监听端口、无效 duration，或内核不支持 Landlock ABI 4 及以上。
+
+## 客户端立即断开
+
+TCP 对端不在 `allowed_sources` 中。检查服务器看到的源地址，而不是转发标头。如果前面有负载均衡器，必须允许它的地址。
+
+## 返回 403
+
+Esperanta 返回 403 通常表示目标端口不在 `allowed_ports` 中。CONNECT 返回 400 表示目标不是 `host:port`、包含认证信息或包含请求体。
+
+## 返回 502
+
+502 表示无法到达目标。检查 DNS、`deny_private_destinations`、目标可用性和 `dial_timeout`。诊断时可启用调试日志：
+
+```sh
+sudo systemctl edit esperanta
+```
+
+添加临时环境变量覆盖：
+
+```ini
+[Service]
+Environment=GODEBUG=netdns=go
+```
+
+然后查看 journal。故障处理结束后删除调试覆盖。
+
+## Landlock 错误
+
+如果 Landlock 不可用或不支持 TCP 限制，Esperanta 会故意拒绝启动。检查内核版本以及其他沙箱是否阻止 Landlock 系统调用：
+
+```sh
+grep landlock /boot/config-$(uname -r)
+journalctl -u esperanta -n 50 --no-pager
+```
+
+## Snap 配置
+
+Snap 配置文件路径与软件包安装不同：
+
+```sh
+sudo nano /var/snap/esperanta/current/config/config.yaml
+sudo snap restart esperanta
+```
+
+## 仓库签名密钥
+
+公钥指纹与软件包仓库一起发布。密钥验证失败时，将导入的密钥与公开指纹比较：
+
+```sh
+curl -fsSL https://nexryai.github.io/esperanta/esperanta-archive-keyring.fingerprint
+```

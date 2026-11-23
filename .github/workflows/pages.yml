@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/pages.yml'
+      - 'docs/**'
   workflow_run:
     workflows:
       - release
@@ -23,8 +24,56 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  docs:
+    name: Build documentation
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      DOCS_SITE_URL: https://nexryai.github.io
+      DOCS_BASE_PATH: /esperanta
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || 'main' }}
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: docs/pnpm-lock.yaml
+
+      - name: Install documentation dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check documentation types
+        run: pnpm types:check
+
+      - name: Build and test documentation
+        run: pnpm test
+
+      - name: Upload documentation
+        uses: actions/upload-artifact@v4
+        with:
+          name: esperanta-docs
+          path: docs/dist
+          if-no-files-found: error
+          retention-days: 1
+
   deploy:
-    name: Publish APT and pacman repositories
+    name: Publish documentation, APT and pacman repositories
+    needs: docs
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     environment:
@@ -175,6 +224,13 @@ jobs:
           done
 
           printf '%s\n' "$keyid" > esperanta-archive-keyring.fingerprint
+
+      - name: Download documentation
+        if: steps.key.outputs.available == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: esperanta-docs
+          path: public
 
       - name: Setup Pages
         if: steps.key.outputs.available == 'true'

@@ -1,0 +1,52 @@
+---
+title: "プロキシの使い方"
+description: "HTTP 転送と HTTPS CONNECT のためにクライアントを設定します。"
+---
+
+## HTTP 転送
+
+プロキシへ絶対 URL を送ります。Esperanta は接続先へ接続し、リクエストターゲットを書き換え、レスポンスをキャッシュせずに転送します。
+
+```sh
+curl --noproxy '' --proxy http://127.0.0.1:8080 http://example.com/
+```
+
+## HTTPS CONNECT
+
+HTTPS クライアントは HTTP CONNECT メソッドを使います。TLS セッションは接続先と直接確立され、Esperanta は終端も検査もしません。
+
+```sh
+curl --noproxy '' --proxy http://127.0.0.1:8080 https://example.com/
+```
+
+## 上流ヘッダー
+
+通常の HTTP 転送では、設定した `upstream_headers` がすべてのリクエストに設定され、同名のクライアント値を置き換えます。
+
+```yaml
+upstream_headers:
+  User-Agent: "Esperanta"
+  X-Origin-Authorization: "Bearer secret"
+```
+
+リクエストヘッダーを返す HTTP エンドポイントで結果を確認できます。本番の秘密情報をシェルの履歴に残さず、パーミッション 0600 の設定ファイルから読み込んでください。
+
+```sh
+curl --noproxy '' --proxy http://127.0.0.1:8080 \
+  -H 'X-Origin-Authorization: client-value' \
+  http://127.0.0.1:8000/debug/headers
+```
+
+CONNECT トンネルは不透明です。TLS クライアント用のヘッダーはプロキシではなく TLS クライアントが制御します。
+
+## プロキシ環境変数
+
+多くのコマンドラインツールは標準のプロキシ変数を参照します。一部のコマンドだけプロキシを使う場合は、システム全体に export せず現在のシェルに限定します。
+
+```sh
+HTTP_PROXY=http://127.0.0.1:8080 \
+HTTPS_PROXY=http://127.0.0.1:8080 \
+curl https://example.com/
+```
+
+ツールによっては小文字の変数を無視したり、独自のプロキシ設定を持ったりします。動作が不明な場合はクライアントを明示的に設定してください。
