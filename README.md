@@ -190,6 +190,8 @@ GitHub Pages must use the "GitHub Actions" source. The repository also needs:
 - A Fedora COPR project configured for this repository (SCM source).
 - `APT_GPG_PRIVATE_KEY`: an ASCII-armored private signing key.
 - `APT_GPG_PASSPHRASE`: its passphrase, if it has one.
+- `STORE_LOGIN`: Snap Store credentials exported for both channels:
+  `snapcraft export-login --snaps=esperanta --channels=edge,stable --acls package_access,package_push,package_update,package_release -`.
 
 The APT and pacman repositories are not deployed until the signing key is
 configured. Never commit the private key; only the generated public keyring is
