@@ -1,0 +1,192 @@
+name: pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/pages.yml'
+  workflow_run:
+    workflows:
+      - release
+    types:
+      - completed
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Publish APT and pacman repositories
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check signing key
+        id: key
+        env:
+          KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::APT_GPG_PRIVATE_KEY is not configured; skipping the Pages deployment"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.available == 'true'
+        with:
+          ref: main
+
+      - name: Install tools
+        if: steps.key.outputs.available == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apt-utils dpkg-dev gnupg
+
+      - name: Collect Debian packages
+        if: steps.key.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p public/pool/main/e/esperanta
+          for tag in $(gh release list --limit 100 --json tagName -q '.[].tagName'); do
+            gh release download "$tag" --pattern '*.deb' \
+              --dir public/pool/main/e/esperanta || true
+          done
+          ls -l public/pool/main/e/esperanta
+
+      - name: Collect Arch packages
+        if: steps.key.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p public/pacman/pool
+          for tag in $(gh release list --limit 100 --json tagName -q '.[].tagName'); do
+            gh release download "$tag" \
+              --pattern '*.pkg.tar.zst' \
+              --pattern '*.pkg.tar.zst.sig' \
+              --dir public/pacman/pool || true
+          done
+          shopt -s nullglob
+          for file in public/pacman/pool/*; do
+            case "$file" in
+              *-x86_64.pkg.tar.zst*) arch=x86_64 ;;
+              *-aarch64.pkg.tar.zst*) arch=aarch64 ;;
+              *) continue ;;
+            esac
+            mkdir -p "public/pacman/$arch"
+            mv "$file" "public/pacman/$arch/"
+          done
+          rm -rf public/pacman/pool
+
+      - name: Generate pacman repository metadata
+        if: steps.key.outputs.available == 'true'
+        run: |
+          for arch in x86_64 aarch64; do
+            dir="public/pacman/$arch"
+            [ -d "$dir" ] || continue
+            shopt -s nullglob
+            pkgs=("$dir"/*.pkg.tar.zst)
+            shopt -u nullglob
+            [ "${#pkgs[@]}" -gt 0 ] || continue
+
+            echo "Generating pacman repository for $arch"
+            # repo-add runs without --sign because the signing key is
+            # passphrase protected. Metadata is signed below instead.
+            docker run --rm \
+              --volume "$PWD/$dir:/repo" \
+              --workdir /repo \
+              archlinux:latest \
+              bash -c 'repo-add esperanta.db.tar.gz ./*.pkg.tar.zst'
+          done
+
+      - name: Generate APT repository metadata
+        if: steps.key.outputs.available == 'true'
+        run: |
+          cd public
+          for arch in amd64 arm64; do
+            mkdir -p "dists/stable/main/binary-$arch"
+            dpkg-scanpackages --multiversion --arch "$arch" pool /dev/null \
+              > "dists/stable/main/binary-$arch/Packages"
+            gzip -9c "dists/stable/main/binary-$arch/Packages" \
+              > "dists/stable/main/binary-$arch/Packages.gz"
+          done
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin=esperanta \
+            -o APT::FTPArchive::Release::Label=esperanta \
+            -o APT::FTPArchive::Release::Suite=stable \
+            -o APT::FTPArchive::Release::Codename=stable \
+            -o APT::FTPArchive::Release::Architectures="amd64 arm64" \
+            -o APT::FTPArchive::Release::Components=main \
+            release dists/stable > dists/stable/Release
+
+      - name: Sign repositories
+        if: steps.key.outputs.available == 'true'
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          cd public
+          GNUPGHOME="$(mktemp -d)"
+          export GNUPGHOME
+          printf '%s' "$APT_GPG_PRIVATE_KEY" | gpg --batch --quiet --import
+
+          GPG_OPTS=(--batch --yes --pinentry-mode loopback)
+          if [ -n "${APT_GPG_PASSPHRASE:-}" ]; then
+            GPG_OPTS+=(--passphrase "$APT_GPG_PASSPHRASE")
+          fi
+
+          keyid=$(gpg --list-secret-keys --with-colons |
+            awk -F: '/^fpr:/{print $10; exit}')
+
+          gpg "${GPG_OPTS[@]}" --clearsign \
+            -o dists/stable/InRelease dists/stable/Release
+          gpg "${GPG_OPTS[@]}" --armor --detach-sign \
+            -o dists/stable/Release.gpg dists/stable/Release
+          gpg --armor --export "$keyid" > esperanta-archive-keyring.asc
+
+          # pacman repository metadata and packages use the same signing key.
+          mkdir -p pacman
+          gpg --armor --export "$keyid" > pacman/esperanta-archive-keyring.asc
+
+          shopt -s nullglob
+          for pkg in pacman/*/*.pkg.tar.zst; do
+            gpg "${GPG_OPTS[@]}" --detach-sign -o "$pkg.sig" "$pkg"
+          done
+
+          for arch in x86_64 aarch64; do
+            [ -d "pacman/$arch" ] || continue
+            for db in esperanta.db esperanta.db.tar.gz esperanta.files esperanta.files.tar.gz; do
+              [ -e "pacman/$arch/$db" ] || continue
+              gpg "${GPG_OPTS[@]}" --detach-sign \
+                -o "pacman/$arch/$db.sig" "pacman/$arch/$db"
+            done
+          done
+
+          printf '%s\n' "$keyid" > esperanta-archive-keyring.fingerprint
+
+      - name: Setup Pages
+        if: steps.key.outputs.available == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: steps.key.outputs.available == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        if: steps.key.outputs.available == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4
