@@ -18,7 +18,7 @@ srpm:
 		dnf -y install rpm-build rpmdevtools git
 	@set -e; \
 	mkdir -p '$(TOPDIR)/SOURCES' '$(OUTDIR)'; \
-	tag="$$(git describe --tags --exact-match 2>/dev/null)"; \
+	tag="$$(git describe --tags --exact-match 2>/dev/null || true)"; \
 	version="$${tag#v}"; \
 	pkgver="$$(printf '%s' "$$version" | sed 's/-/_/g')"; \
 	spec='$(SPEC)'; \
