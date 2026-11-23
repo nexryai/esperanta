@@ -7,7 +7,7 @@ Summary:        IP-restricted HTTP and HTTPS forward proxy
 
 License:        MIT
 URL:            https://github.com/nexryai/esperanta
-Source0:        https://github.com/nexryai/esperanta/archive/refs/tags/v0.1.3.tar.gz
+Source0:        https://github.com/nexryai/esperanta/archive/refs/tags/v0.1.4.tar.gz
 
 BuildRequires:  golang >= 1.21
 BuildRequires:  ca-certificates

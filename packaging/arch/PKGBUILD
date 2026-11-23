@@ -10,7 +10,7 @@ makedepends=('go')
 backup=('etc/esperanta/config.yaml')
 # The release workflow replaces the placeholder checksum and version.
 source=("esperanta-0.1.4.tar.gz::https://github.com/nexryai/esperanta/archive/refs/tags/v0.1.4.tar.gz")
-sha256sums=('8589ef5a337be20125c575f7a19461a5e60f4e5f243a84f11e71e29d4124d0f8')
+sha256sums=('f54d2640f7aff0ed9487c5e2c71987ef053a9cded7b12c7b03f141147dbe970f')
 # The binary is a self-contained static Go build and is already stripped by
 # -ldflags '-s -w'. Skipping makepkg's strip/debug steps also lets the same
 # PKGBUILD cross-compile the aarch64 package on an x86_64 build host.
