@@ -2,8 +2,6 @@
 
 A simple HTTP forward proxy written in Go.
 
-Documentation: <https://nexryai.github.io/esperanta/>
-
 ## Installation
 
 ### Snap
@@ -85,10 +83,6 @@ If the repository key is rotated, check the published
 
 ### From source
 
-The packaged systemd service runs as a `DynamicUser` with an empty capability
-set, a read-only system, a system call allow-list and Esperanta's own Landlock
-policy.
-
 ```sh
 go build -trimpath -ldflags='-s -w' -o bin/esperanta ./cmd/esperanta
 
@@ -101,23 +95,6 @@ sudo systemctl enable --now esperanta
 # Edit configuration, then restart
 sudo nano /etc/esperanta/config.yaml
 sudo systemctl restart esperanta
-```
-
-## Run locally
-
-See `go.mod` for the required Go version. Run as a regular user.
-
-```sh
-go build -trimpath -o bin/esperanta ./cmd/esperanta
-./bin/esperanta --config config.yaml --check
-./bin/esperanta --config config.yaml
-```
-
-You can test it from another terminal:
-
-```sh
-curl --noproxy '' --proxy http://127.0.0.1:8080 http://example.com/
-curl --noproxy '' --proxy http://127.0.0.1:8080 https://example.com/
 ```
 
 ## YAML configuration
@@ -197,31 +174,3 @@ expose the HTTP listener only to trusted clients on a trusted network.
 The proxy checks the IP addresses returned by DNS for each destination and connects directly to a checked IP address.
 It also rejects DNS responses that contain a mix of public and nonpublic IP addresses. If you need to connect to internal services,
 set `deny_private_destinations: false`.
-
-## Releasing
-
-Push a `v<version>` tag, or run the `release` workflow manually with a tag:
-
-```sh
-git tag -s v0.1.5 -m "esperanta 0.1.5"
-git push origin v0.1.5
-```
-
-The release workflow builds Linux archives, `.deb` packages and Arch Linux
-packages, then publishes the APT and pacman repositories to GitHub Pages. The
-same tag publishes the Snap to the `stable` channel, while `main` builds go to
-`edge`. Arch package metadata and the RPM spec are committed back to `main` as
-a signed commit. COPR builds RPMs directly from the pushed tag using
-`.copr/Makefile` and `esperanta.spec`.
-
-GitHub Pages must use the "GitHub Actions" source. The repository also needs:
-
-- A Fedora COPR project configured for this repository (SCM source).
-- `APT_GPG_PRIVATE_KEY`: an ASCII-armored private signing key.
-- `APT_GPG_PASSPHRASE`: its passphrase, if it has one.
-- `STORE_LOGIN`: Snap Store credentials exported for both channels:
-  `snapcraft export-login --snaps=esperanta --channels=edge,stable --acls package_access,package_push,package_update,package_release -`.
-
-The APT and pacman repositories are not deployed until the signing key is
-configured. Never commit the private key; only the generated public keyring is
-published to Pages.
