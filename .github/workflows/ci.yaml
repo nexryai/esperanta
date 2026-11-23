@@ -19,6 +19,7 @@ jobs:
       - run: test -z "$(gofmt -l cmd internal)"
       - run: go test -race ./...
       - run: go vet ./...
+      - run: systemd-analyze security --offline=yes --no-pager --threshold=20 systemd/esperanta.service
       - run: go build -trimpath -o bin/esperanta ./cmd/esperanta
       - run: ./bin/esperanta --config config.yaml --check
 

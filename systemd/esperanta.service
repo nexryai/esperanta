@@ -1,0 +1,54 @@
+[Unit]
+Description=Esperanta HTTP forward proxy
+Documentation=https://github.com/nexryai/esperanta
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+ExecStart=/usr/bin/esperanta --config /etc/esperanta/config.yaml
+Restart=on-failure
+RestartSec=2s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+UMask=0077
+LimitNOFILE=65536
+TasksMax=4096
+MemoryMax=1G
+
+# The proxy is unprivileged and cannot gain privileges.
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+DevicePolicy=closed
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+KeyringMode=private
+RemoveIPC=yes
+
+# Esperanta enforces its own Landlock policy after reading its configuration.
+SystemCallArchitectures=native
+SystemCallFilter=@system-service landlock_create_ruleset landlock_add_rule landlock_restrict_self
+SystemCallErrorNumber=EPERM
+
+# DNS and outbound HTTP(S) require Internet sockets. No other family is needed.
+RestrictAddressFamilies=AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target

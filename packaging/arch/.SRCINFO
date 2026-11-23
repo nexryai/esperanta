@@ -1,0 +1,18 @@
+pkgbase = esperanta
+	pkgdesc = IP-restricted HTTP and HTTPS forward proxy
+	pkgver = 0.1.2
+	pkgrel = 1
+	url = https://github.com/nexryai/esperanta
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	makedepends = go
+	depends = ca-certificates
+	depends = systemd
+	options = !strip
+	options = !debug
+	backup = etc/esperanta/config.yaml
+	source = esperanta-0.1.2.tar.gz::https://github.com/nexryai/esperanta/archive/refs/tags/v0.1.2.tar.gz
+	sha256sums = SKIP
+
+pkgname = esperanta

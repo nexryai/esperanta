@@ -1,0 +1,391 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.1.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    name: Build release archives and Debian packages
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build Linux binaries
+        run: |
+          for arch in amd64 arm64; do
+            GOOS=linux GOARCH="$arch" CGO_ENABLED=0 \
+              go build -buildvcs=false -trimpath -ldflags='-s -w' \
+              -o "esperanta-$arch" ./cmd/esperanta
+          done
+
+      - name: Build Debian packages
+        run: |
+          version="${RELEASE_TAG#v}"
+          packaging/deb/build-deb.sh amd64 esperanta-amd64 "$version" dist
+          packaging/deb/build-deb.sh arm64 esperanta-arm64 "$version" dist
+
+      - name: Compress binaries
+        run: |
+          for arch in amd64 arm64; do
+            zip -j "esperanta-linux-$arch.zip" "esperanta-$arch"
+          done
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" \
+              esperanta-linux-*.zip dist/*.deb --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "Esperanta $RELEASE_TAG" \
+              --generate-notes \
+              esperanta-linux-*.zip dist/*.deb
+          fi
+
+  arch:
+    name: Build Arch package (${{ matrix.arch }})
+    needs: release
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - x86_64
+          - aarch64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Build package
+        run: |
+          version="${RELEASE_TAG#v}"
+          docker run --rm \
+            --volume "$PWD:/work" \
+            --workdir /work \
+            archlinux:latest \
+            bash -c "pacman -Syu --noconfirm --needed base-devel go curl git >/dev/null && packaging/arch/build.sh '$version' '${{ matrix.arch }}' dist"
+
+      - name: Upload package to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          assets=(dist/*.pkg.tar.zst)
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+
+  packaging:
+    name: Update packaging metadata
+    needs: release
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Update PKGBUILD, .SRCINFO and spec
+        run: |
+          set -euo pipefail
+          tag="${RELEASE_TAG#v}"
+          pkgver="${tag//-/_}"
+          url="https://github.com/nexryai/esperanta/archive/refs/tags/v${tag}.tar.gz"
+
+          tmp="$(mktemp)"
+          curl -fsSL --retry 3 "$url" -o "$tmp"
+          sha="$(sha256sum "$tmp" | cut -d' ' -f1)"
+          rm -f "$tmp"
+
+          sed -E -i \
+            -e "s/^pkgver=.*/pkgver=${pkgver}/" \
+            -e "s/^pkgrel=.*/pkgrel=1/" \
+            -e "s/^sha256sums=.*/sha256sums=('${sha}')/" \
+            -e "s|^source=.*|source=(\"esperanta-${pkgver}.tar.gz::${url}\")|" \
+            packaging/arch/PKGBUILD
+
+          docker run --rm \
+            --volume "$PWD/packaging/arch:/src:ro" \
+            archlinux:latest \
+            bash -c '
+              set -e
+              id -u builder >/dev/null 2>&1 || useradd -m builder
+              mkdir -p /home/builder/pkg
+              cp /src/PKGBUILD /home/builder/pkg/
+              chown -R builder /home/builder/pkg
+              cd /home/builder/pkg
+              runuser -u builder -- makepkg --printsrcinfo
+            ' > packaging/arch/.SRCINFO
+
+          # Keep the fallback version in the spec in sync. COPR tag builds
+          # derive the real version from the tag in .copr/Makefile.
+          sed -E -i \
+            -e "s/^Version:.*/Version:        ${pkgver}/" \
+            -e "s|^Source0:.*|Source0:        https://github.com/nexryai/esperanta/archive/refs/tags/v${tag}.tar.gz|" \
+            esperanta.spec
+
+      - name: Commit metadata as a signed commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet -- packaging/arch/PKGBUILD packaging/arch/.SRCINFO esperanta.spec; then
+            echo "packaging metadata is already up to date"
+            exit 0
+          fi
+
+          pkgbuild=$(base64 -w0 packaging/arch/PKGBUILD)
+          srcinfo=$(base64 -w0 packaging/arch/.SRCINFO)
+          spec=$(base64 -w0 esperanta.spec)
+
+          # createCommitOnBranch creates a commit signed by GitHub, which is
+          # required because main requires signed commits.
+          for attempt in 1 2 3; do
+            git fetch --quiet origin main
+            head=$(git rev-parse origin/main)
+
+            payload=$(jq -n \
+              --arg repo "$GITHUB_REPOSITORY" \
+              --arg branch "main" \
+              --arg headline "chore: update packaging for ${RELEASE_TAG} [skip ci]" \
+              --arg head "$head" \
+              --arg pkgbuild "$pkgbuild" \
+              --arg srcinfo "$srcinfo" \
+              --arg spec "$spec" \
+              '{
+                query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid url } } }",
+                variables: {
+                  input: {
+                    branch: {repositoryNameWithOwner: $repo, branchName: $branch},
+                    message: {headline: $headline},
+                    fileChanges: {
+                      additions: [
+                        {path: "packaging/arch/PKGBUILD", contents: $pkgbuild},
+                        {path: "packaging/arch/.SRCINFO", contents: $srcinfo},
+                        {path: "esperanta.spec", contents: $spec}
+                      ]
+                    },
+                    expectedHeadOid: $head
+                  }
+                }
+              }')
+
+            response=$(curl -sS \
+              -H "Authorization: bearer ${GH_TOKEN}" \
+              -H "Content-Type: application/json" \
+              --data "$payload" \
+              https://api.github.com/graphql)
+
+            if echo "$response" | jq -e '.data.createCommitOnBranch.commit.oid' >/dev/null 2>&1; then
+              echo "Created signed commit: $(echo "$response" | jq -r '.data.createCommitOnBranch.commit.oid')"
+              echo "$response" | jq -r '.data.createCommitOnBranch.commit.url'
+              exit 0
+            fi
+
+            echo "Attempt ${attempt} failed:"
+            echo "$response" | jq .
+            sleep 5
+          done
+
+          echo "Failed to create a signed commit" >&2
+          exit 1
+
+  pages:
+    name: Publish APT and pacman repositories
+    needs:
+      - release
+      - arch
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check signing key
+        id: key
+        env:
+          KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          if [ -n "$KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::APT_GPG_PRIVATE_KEY is not configured; skipping the Pages deployment"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.available == 'true'
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+
+      - name: Install tools
+        if: steps.key.outputs.available == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y apt-utils dpkg-dev gnupg
+
+      - name: Collect Debian packages
+        if: steps.key.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p public/pool/main/e/esperanta
+          for tag in $(gh release list --limit 100 --json tagName -q '.[].tagName'); do
+            gh release download "$tag" --pattern '*.deb' \
+              --dir public/pool/main/e/esperanta || true
+          done
+          ls -l public/pool/main/e/esperanta
+
+      - name: Collect Arch packages
+        if: steps.key.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p public/pacman/pool
+          for tag in $(gh release list --limit 100 --json tagName -q '.[].tagName'); do
+            gh release download "$tag" \
+              --pattern '*.pkg.tar.zst' \
+              --pattern '*.pkg.tar.zst.sig' \
+              --dir public/pacman/pool || true
+          done
+          shopt -s nullglob
+          for file in public/pacman/pool/*; do
+            case "$file" in
+              *-x86_64.pkg.tar.zst*) arch=x86_64 ;;
+              *-aarch64.pkg.tar.zst*) arch=aarch64 ;;
+              *) continue ;;
+            esac
+            mkdir -p "public/pacman/$arch"
+            mv "$file" "public/pacman/$arch/"
+          done
+          rm -rf public/pacman/pool
+
+      - name: Generate pacman repository metadata
+        if: steps.key.outputs.available == 'true'
+        run: |
+          for arch in x86_64 aarch64; do
+            dir="public/pacman/$arch"
+            [ -d "$dir" ] || continue
+            shopt -s nullglob
+            pkgs=("$dir"/*.pkg.tar.zst)
+            shopt -u nullglob
+            [ "${#pkgs[@]}" -gt 0 ] || continue
+
+            echo "Generating pacman repository for $arch"
+            # repo-add runs without --sign because the signing key is
+            # passphrase protected. Metadata is signed below instead.
+            docker run --rm \
+              --volume "$PWD/$dir:/repo" \
+              --workdir /repo \
+              archlinux:latest \
+              bash -c 'repo-add esperanta.db.tar.gz ./*.pkg.tar.zst'
+          done
+
+      - name: Generate APT repository metadata
+        if: steps.key.outputs.available == 'true'
+        run: |
+          cd public
+          for arch in amd64 arm64; do
+            mkdir -p "dists/stable/main/binary-$arch"
+            dpkg-scanpackages --multiversion --arch "$arch" pool /dev/null \
+              > "dists/stable/main/binary-$arch/Packages"
+            gzip -9c "dists/stable/main/binary-$arch/Packages" \
+              > "dists/stable/main/binary-$arch/Packages.gz"
+          done
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin=esperanta \
+            -o APT::FTPArchive::Release::Label=esperanta \
+            -o APT::FTPArchive::Release::Suite=stable \
+            -o APT::FTPArchive::Release::Codename=stable \
+            -o APT::FTPArchive::Release::Architectures="amd64 arm64" \
+            -o APT::FTPArchive::Release::Components=main \
+            release dists/stable > dists/stable/Release
+
+      - name: Sign repositories
+        if: steps.key.outputs.available == 'true'
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: |
+          cd public
+          GNUPGHOME="$(mktemp -d)"
+          export GNUPGHOME
+          printf '%s' "$APT_GPG_PRIVATE_KEY" | gpg --batch --quiet --import
+
+          GPG_OPTS=(--batch --yes --pinentry-mode loopback)
+          if [ -n "${APT_GPG_PASSPHRASE:-}" ]; then
+            GPG_OPTS+=(--passphrase "$APT_GPG_PASSPHRASE")
+          fi
+
+          keyid=$(gpg --list-secret-keys --with-colons |
+            awk -F: '/^fpr:/{print $10; exit}')
+
+          gpg "${GPG_OPTS[@]}" --clearsign \
+            -o dists/stable/InRelease dists/stable/Release
+          gpg "${GPG_OPTS[@]}" --armor --detach-sign \
+            -o dists/stable/Release.gpg dists/stable/Release
+          gpg --armor --export "$keyid" > esperanta-archive-keyring.asc
+
+          # pacman repository metadata and packages use the same signing key.
+          mkdir -p pacman
+          gpg --armor --export "$keyid" > pacman/esperanta-archive-keyring.asc
+
+          shopt -s nullglob
+          for pkg in pacman/*/*.pkg.tar.zst; do
+            gpg "${GPG_OPTS[@]}" --detach-sign -o "$pkg.sig" "$pkg"
+          done
+
+          for arch in x86_64 aarch64; do
+            [ -d "pacman/$arch" ] || continue
+            for db in esperanta.db esperanta.db.tar.gz esperanta.files esperanta.files.tar.gz; do
+              [ -e "pacman/$arch/$db" ] || continue
+              gpg "${GPG_OPTS[@]}" --detach-sign \
+                -o "pacman/$arch/$db.sig" "pacman/$arch/$db"
+            done
+          done
+
+          printf '%s\n' "$keyid" > esperanta-archive-keyring.fingerprint
+
+      - name: Setup Pages
+        if: steps.key.outputs.available == 'true'
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        if: steps.key.outputs.available == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        if: steps.key.outputs.available == 'true'
+        id: deployment
+        uses: actions/deploy-pages@v4
