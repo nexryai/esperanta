@@ -58,6 +58,25 @@ upstream_headers:
 
 CONNECT は暗号化されたバイトトンネルです。Esperanta は TLS セッション内に HTTP ヘッダーを追加できないため、`upstream_headers` は CONNECT には適用されません。
 
+トップレベルの設定は同じホストへの平文 HTTP リクエストにも適用されます。サービストークンなど HTTPS でのみ送るべき認証情報には、以下の固定 HTTPS 転送を使ってください。
+
+## 固定 HTTPS 転送
+
+`request_target` を使うと、`listen` と同じ IP アドレスの別ポートで HTTP を受け、設定したホストの HTTPS（443 番ポート）へ転送できます。Cloudflare Access のサービストークンなど、クライアントに持たせたくないヘッダーを専用ポートで追加できます。
+
+```yaml
+request_target:
+  - port: 8081
+    upstream_host: app.example.com
+    upstream_headers:
+      CF-Access-Client-Id: "<client-id>"
+      CF-Access-Client-Secret: "<client-secret>"
+```
+
+待ち受けには重複しない 1024〜65535 のポートを指定します。`upstream_host` はホスト名のみで、スキーム、ポート、パスは指定できません。`allowed_ports` に 443 が必要です。リクエストのメソッド、パス、クエリ、ボディは転送されますが、クライアントが送った `Host` にかかわらず転送先は固定です。絶対形式の URL、CONNECT、TRACE、プロトコルアップグレードは受け付けません。
+
+専用ポートで設定したヘッダーはクライアントの同名ヘッダーを置き換えます。トップレベルの `upstream_headers` は適用されません。追加するヘッダーがなければ省略するか `upstream_headers: {}` とします。専用ポートはフォワードプロキシと `allowed_sources`、接続先 IP 制限、接続数・同時処理数の上限を共有します。許可したクライアントは専用ポート経由でサービストークンの権限を使えるため、設定ファイルを保護し、この HTTP ポートは信頼できるネットワーク上で信頼できるクライアントにだけ公開してください。
+
 ## 制限とタイムアウト
 
 | オプション | 動作 |

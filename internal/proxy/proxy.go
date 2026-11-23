@@ -62,25 +62,33 @@ func New(c config.Config) *Proxy {
 		DisableCompression:     true,
 		MaxResponseHeaderBytes: 64 << 10,
 	}
-	p.forward = &httputil.ReverseProxy{
+	p.forward = p.newForward(func(r *httputil.ProxyRequest) {
+		r.Out.Host = r.In.URL.Host
+		applyHeaders(r.Out.Header, p.domainHeaders[config.CanonicalDomain(r.In.URL.Hostname())])
+	})
+	return p
+}
+
+func (p *Proxy) newForward(rewrite func(*httputil.ProxyRequest)) *httputil.ReverseProxy {
+	return &httputil.ReverseProxy{
 		Transport:  p.transport,
 		BufferPool: &p.buffers,
 		Rewrite: func(r *httputil.ProxyRequest) {
-			r.Out.Host = r.In.URL.Host
 			r.Out.Header.Del("Proxy-Authorization")
 			r.Out.Header.Del("Proxy-Connection")
-			if scoped := p.domainHeaders[config.CanonicalDomain(r.In.URL.Hostname())]; scoped != nil {
-				for name, value := range scoped {
-					r.Out.Header[name] = value
-				}
-			}
+			rewrite(r)
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			slog.Debug("upstream failed", "error", err)
 			http.Error(w, "upstream unavailable", http.StatusBadGateway)
 		},
 	}
-	return p
+}
+
+func applyHeaders(dst, src http.Header) {
+	for name, value := range src {
+		dst[name] = value
+	}
 }
 
 func headerSet(values map[string]string) http.Header {
@@ -92,6 +100,10 @@ func headerSet(values map[string]string) http.Header {
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	p.serve(w, r, p.serveProxy)
+}
+
+func (p *Proxy) serve(w http.ResponseWriter, r *http.Request, handler http.HandlerFunc) {
 	if !p.c.AllowsSource(r.RemoteAddr) {
 		http.Error(w, "forbidden", 403)
 		return
@@ -105,6 +117,10 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "proxy busy", 503)
 		return
 	}
+	handler(w, r)
+}
+
+func (p *Proxy) serveProxy(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodConnect {
 		p.connect(w, r)
 		return
@@ -130,9 +146,13 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "use CONNECT for protocol upgrades", 400)
 		return
 	}
+	p.forwardRequest(w, r, p.forward)
+}
+
+func (p *Proxy) forwardRequest(w http.ResponseWriter, r *http.Request, handler http.Handler) {
 	ctx, cancel := context.WithTimeout(r.Context(), p.c.RequestTimeout)
 	defer cancel()
-	p.forward.ServeHTTP(w, r.WithContext(ctx))
+	handler.ServeHTTP(w, r.WithContext(ctx))
 }
 
 // Close also terminates hijacked connections, which http.Server.Shutdown ignores.

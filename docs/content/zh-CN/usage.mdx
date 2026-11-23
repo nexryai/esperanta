@@ -21,15 +21,16 @@ curl --noproxy '' --proxy http://127.0.0.1:8080 https://example.com/
 
 ## 上游标头
 
-对于普通 HTTP 转发，配置的 `upstream_headers` 会设置到每个请求，并替换客户端发送的同名值。
+对于普通 HTTP 转发，顶层 `upstream_headers` 仅适用于匹配的目标主机名，并替换客户端发送的同名标头。
 
 ```yaml
 upstream_headers:
-  User-Agent: "Esperanta"
-  X-Origin-Authorization: "Bearer secret"
+  "127.0.0.1":
+    User-Agent: "Esperanta"
+    X-Origin-Authorization: "Bearer secret"
 ```
 
-使用会回显请求标头的 HTTP 端点验证结果。不要在 shell 历史中留下生产密钥，应从权限为 0600 的配置文件读取。
+用示例值在会回显请求标头的本地 HTTP 端点上验证。请在隔离的测试实例中允许端口 8000，并关闭 `deny_private_destinations`。生产密钥应存放在权限受限的配置文件中，不要留在 shell 历史中。
 
 ```sh
 curl --noproxy '' --proxy http://127.0.0.1:8080 \
@@ -38,6 +39,16 @@ curl --noproxy '' --proxy http://127.0.0.1:8080 \
 ```
 
 CONNECT 隧道是不透明的。TLS 客户端的标头由 TLS 客户端控制，而不是代理。
+
+## 通过专用端口转发到 HTTPS
+
+在 8081 端口[配置 `request_target`](/zh-CN/configuration) 后，向该端口发送普通 HTTP 请求，无需使用 `--proxy` 或 `--request-target`：
+
+```sh
+curl --noproxy '*' 'http://127.0.0.1:8081/api/status?check=1'
+```
+
+Esperanta 会添加配置的标头，并通过 HTTPS 连接到固定上游。使用 Cloudflare Access 时，请在应用的 Service Auth 策略中允许该服务令牌。
 
 ## 代理环境变量
 

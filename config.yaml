@@ -17,6 +17,15 @@ deny_private_destinations: true
 #   api.example.com:
 #     Authorization: "Bearer domain-secret"
 
+# listen と同じ IP の別ポートで HTTP を受け、固定の HTTPS ホストへ転送します。
+# 接続を許可したクライアントは、ここで設定した認証情報を使って上流へアクセスできます。
+# request_target:
+#   - port: 8081
+#     upstream_host: app.example.com
+#     upstream_headers:
+#       CF-Access-Client-Id: "<client-id>"
+#       CF-Access-Client-Secret: "<client-secret>"
+
 max_concurrent: 1024
 max_connections: 2048
 max_idle_connections: 1024

@@ -21,6 +21,7 @@ type Config struct {
 	AllowedPorts    []int                        `yaml:"allowed_ports"`
 	DenyPrivate     bool                         `yaml:"deny_private_destinations"`
 	UpstreamHeaders map[string]map[string]string `yaml:"upstream_headers"`
+	RequestTargets  []RequestTarget              `yaml:"request_target"`
 	MaxConcurrent   int                          `yaml:"max_concurrent"`
 	MaxConnections  int                          `yaml:"max_connections"`
 	MaxIdleConns    int                          `yaml:"max_idle_connections"`
@@ -32,6 +33,12 @@ type Config struct {
 	TunnelTimeout   time.Duration                `yaml:"tunnel_timeout"`
 	ShutdownTimeout time.Duration                `yaml:"shutdown_timeout"`
 	Sources         []netip.Prefix               `yaml:"-"`
+}
+
+type RequestTarget struct {
+	Port            int               `yaml:"port"`
+	UpstreamHost    string            `yaml:"upstream_host"`
+	UpstreamHeaders map[string]string `yaml:"upstream_headers"`
 }
 
 var forbiddenUpstreamHeaders = map[string]struct{}{
@@ -130,6 +137,25 @@ func (c *Config) Validate() error {
 	for _, p := range c.AllowedPorts {
 		if p < 1 || p > 65535 {
 			return fmt.Errorf("invalid destination port %d", p)
+		}
+	}
+	if len(c.RequestTargets) > 0 && !c.AllowsPort("443") {
+		return fmt.Errorf("request_target requires destination port 443 in allowed_ports")
+	}
+	listenPorts := map[int]struct{}{p: {}}
+	for i, target := range c.RequestTargets {
+		if target.Port < 1024 || target.Port > 65535 {
+			return fmt.Errorf("request_target[%d].port must be between 1024 and 65535", i)
+		}
+		if _, duplicate := listenPorts[target.Port]; duplicate {
+			return fmt.Errorf("request_target[%d].port duplicates listen port %d", i, target.Port)
+		}
+		listenPorts[target.Port] = struct{}{}
+		if !validDomainName(CanonicalDomain(target.UpstreamHost)) {
+			return fmt.Errorf("request_target[%d].upstream_host must be a hostname without a scheme, port or path", i)
+		}
+		if err := validateUpstreamHeaders(target.UpstreamHeaders); err != nil {
+			return fmt.Errorf("request_target[%d].upstream_headers: %w", i, err)
 		}
 	}
 	seenDomains := make(map[string]struct{}, len(c.UpstreamHeaders))

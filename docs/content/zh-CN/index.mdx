@@ -18,4 +18,4 @@ Esperanta 是用于 HTTP 和 HTTPS CONNECT 的正向代理。它使用 Go 编写
 
 ## Esperanta 不做什么
 
-Esperanta 不是开放代理、TLS 拦截代理或缓存代理。HTTPS CONNECT 流量保持端到端加密，自定义上游标头只适用于普通 HTTP 转发。
+Esperanta 不是开放代理、TLS 拦截代理或缓存代理。HTTPS CONNECT 流量保持端到端加密，无法修改标头。若要向 HTTPS 上游请求添加标头，请使用[固定目标的专用端口](/zh-CN/configuration)。

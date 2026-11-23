@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -62,37 +63,61 @@ func run() error {
 	// even when GODEBUG or a future Go release enables MPTCP by default.
 	var listenConfig net.ListenConfig
 	listenConfig.SetMultipathTCP(false)
-	ln, err := listenConfig.Listen(context.Background(), "tcp", c.Listen)
-	if err != nil {
-		return err
+	addresses := []string{c.Listen}
+	host, _, _ := net.SplitHostPort(c.Listen) // validated by config.Load
+	for _, target := range c.RequestTargets {
+		addresses = append(addresses, net.JoinHostPort(host, strconv.Itoa(target.Port)))
 	}
-	defer ln.Close()
+	slots := make(chan struct{}, c.MaxConnections)
+	listeners := make([]*proxy.Listener, 0, len(addresses))
+	for _, address := range addresses {
+		ln, err := listenConfig.Listen(context.Background(), "tcp", address)
+		if err != nil {
+			return fmt.Errorf("listen on %s: %w", address, err)
+		}
+		defer ln.Close()
+		listeners = append(listeners, &proxy.Listener{Listener: ln, Config: c, Slots: slots})
+	}
 	if err := policy.Restrict(); err != nil {
 		return err
 	}
 	slog.Info("Landlock sandbox enabled")
-	listener := &proxy.Listener{
-		Listener: ln,
-		Config:   c,
-		Slots:    make(chan struct{}, c.MaxConnections),
-	}
 	p := proxy.New(c)
 	defer p.Close()
+	var handler http.Handler = p
+	if len(c.RequestTargets) > 0 {
+		targets := make(map[int]http.Handler, len(c.RequestTargets))
+		for _, target := range c.RequestTargets {
+			targets[target.Port] = p.RequestTarget(target)
+		}
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Select by the accepted socket, never by client-provided Host.
+			local := r.Context().Value(http.LocalAddrContextKey).(*net.TCPAddr)
+			if target := targets[local.Port]; target != nil {
+				target.ServeHTTP(w, r)
+				return
+			}
+			p.ServeHTTP(w, r)
+		})
+	}
 	srv := &http.Server{
-		Handler:           p,
+		Handler:           handler,
 		ReadHeaderTimeout: c.HeaderTimeout,
 		ReadTimeout:       c.RequestTimeout,
 		WriteTimeout:      c.RequestTimeout,
 		IdleTimeout:       c.IdleTimeout,
 		MaxHeaderBytes:    32 << 10,
 	}
+	defer srv.Close()
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	done := make(chan error, 1)
-	go func() {
-		done <- srv.Serve(listener)
-	}()
-	slog.Info("proxy listening", "address", c.Listen, "uid", os.Geteuid())
+	done := make(chan error, len(listeners))
+	for _, listener := range listeners {
+		go func() {
+			done <- srv.Serve(listener)
+		}()
+		slog.Info("proxy listening", "address", listener.Addr().String(), "uid", os.Geteuid())
+	}
 	select {
 	case err = <-done:
 		if errors.Is(err, http.ErrServerClosed) {
@@ -105,7 +130,6 @@ func run() error {
 	shutdown, cancel := context.WithTimeout(context.Background(), c.ShutdownTimeout)
 	defer cancel()
 	if err = srv.Shutdown(shutdown); err != nil {
-		srv.Close()
 		return err
 	}
 	return nil

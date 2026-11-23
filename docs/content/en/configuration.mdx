@@ -58,6 +58,25 @@ The following headers are rejected because they are transport metadata: `Host`, 
 
 CONNECT is an encrypted byte tunnel. Esperanta cannot add HTTP headers inside a TLS session, so `upstream_headers` does not apply to CONNECT traffic.
 
+Matching at the top level does not require HTTPS. Do not put service tokens there if clients can request `http://` for the same host; use a dedicated HTTPS upstream instead.
+
+## Fixed HTTPS forwarding
+
+Each `request_target` entry opens a dedicated HTTP port on the IP address from `listen` and forwards to the configured hostname over HTTPS on port 443. This lets Esperanta add a Cloudflare Access service token without giving it to clients.
+
+```yaml
+request_target:
+  - port: 8081
+    upstream_host: app.example.com
+    upstream_headers:
+      CF-Access-Client-Id: "<client-id>"
+      CF-Access-Client-Secret: "<client-secret>"
+```
+
+Use a unique listener port from 1024 to 65535 and specify `upstream_host` without a scheme, port, or path. Port 443 must be in `allowed_ports`. Requests preserve the method, path, query, and body. The incoming `Host` cannot change the destination. Absolute URLs, CONNECT, TRACE, and protocol upgrades are rejected.
+
+Per-listener headers replace same-named client headers and are independent of the top-level `upstream_headers`. Omit them or use `upstream_headers: {}` if none are needed. The dedicated ports share `allowed_sources`, destination IP restrictions, and connection and concurrency limits with the forward proxy. Any allowed client can use the service identity through the dedicated port. Keep the config file private and expose the HTTP listener only to trusted clients on a trusted network.
+
 ## Limits and timeouts
 
 | Option | Behavior |

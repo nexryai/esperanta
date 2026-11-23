@@ -145,6 +145,7 @@ If a load balancer sits in front of the proxy, its IP address is the one checked
 | `allowed_ports` | Restricts destination ports for HTTP forwarding and CONNECT |
 | `deny_private_destinations` | Blocks connections to private, loopback, link-local, shared, and other nonpublic IP addresses |
 | `upstream_headers` | Sets headers only for exactly matching destination hostnames on regular HTTP requests; CONNECT is unaffected |
+| `request_target` | Opens dedicated HTTP listeners, each forwarding to one fixed HTTPS hostname with its own headers |
 | `max_concurrent` | Limits the combined number of HTTP requests and CONNECT tunnels handled concurrently |
 | `max_connections` | Limits client TCP connections, including idle connections |
 | `max_idle_connections` | Limits idle connections to destinations kept in the pool |
@@ -166,6 +167,32 @@ trailing dot, and configured values replace headers supplied by clients.
 Transport headers such as `Host`, `Content-Length`, `Transfer-Encoding`,
 `Connection` and `Proxy-Authorization` are rejected. The setting does not apply
 inside HTTPS CONNECT tunnels.
+
+Use a dedicated listener to add Cloudflare Access service token headers without
+configuring them on clients or on the forward proxy:
+
+```yaml
+request_target:
+  - port: 8081
+    upstream_host: app.example.com
+    upstream_headers:
+      CF-Access-Client-Id: "<client-id>"
+      CF-Access-Client-Secret: "<client-secret>"
+```
+
+With the default listen IP, run `curl http://127.0.0.1:8081/api/status`. The
+listener uses the IP from `listen` and forwards the method, path, query and body
+to `https://app.example.com` on port 443. The configured hostname is used for
+HTTP Host and TLS verification, regardless of the incoming Host header. The
+listener rejects absolute URLs, CONNECT, TRACE and protocol upgrades. Use `upstream_headers: {}` or omit
+it if no headers are needed. The top-level `upstream_headers` does not apply to
+these listeners.
+
+Port 443 must be in `allowed_ports`. The dedicated listeners share
+`allowed_sources`, destination IP restrictions, connection and concurrency
+limits with the forward proxy. Any allowed client can use the configured
+service identity through the dedicated port. Keep the config file private and
+expose the HTTP listener only to trusted clients on a trusted network.
 
 The proxy checks the IP addresses returned by DNS for each destination and connects directly to a checked IP address.
 It also rejects DNS responses that contain a mix of public and nonpublic IP addresses. If you need to connect to internal services,

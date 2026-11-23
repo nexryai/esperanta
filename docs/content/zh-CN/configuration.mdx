@@ -58,6 +58,25 @@ upstream_headers:
 
 CONNECT 是加密字节隧道。Esperanta 无法向 TLS 会话内添加 HTTP 标头，因此 `upstream_headers` 不适用于 CONNECT。
 
+顶层设置也适用于发往同一主机的明文 HTTP 请求。对于只能通过 HTTPS 发送的服务令牌等凭证，请使用下文的固定 HTTPS 转发。
+
+## 固定目标的 HTTPS 转发
+
+每个 `request_target` 条目都会在 `listen` 配置的 IP 地址上打开一个专用 HTTP 端口，并通过 HTTPS 443 端口转发到指定主机。这样可以由 Esperanta 添加 Cloudflare Access 服务令牌，无需将令牌交给客户端。
+
+```yaml
+request_target:
+  - port: 8081
+    upstream_host: app.example.com
+    upstream_headers:
+      CF-Access-Client-Id: "<client-id>"
+      CF-Access-Client-Secret: "<client-secret>"
+```
+
+监听端口必须在 1024 至 65535 之间且不能重复。`upstream_host` 只填写主机名，不含协议、端口或路径。`allowed_ports` 必须包含 443。转发时保留请求方法、路径、查询参数和请求体；客户端的 `Host` 不会改变目标。不接受绝对 URL、CONNECT、TRACE 或协议升级。
+
+专用端口配置的标头会替换客户端的同名标头，与顶层 `upstream_headers` 无关。如不需要添加标头，可省略或使用 `upstream_headers: {}`。专用端口与正向代理共用 `allowed_sources`、目标 IP 限制、连接及并发限制。任何获准连接的客户端都能通过专用端口使用该服务身份。请保护配置文件，并仅在可信网络上向可信客户端开放该 HTTP 端口。
+
 ## 限制和超时
 
 | 选项 | 行为 |

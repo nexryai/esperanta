@@ -18,4 +18,4 @@ Esperanta は HTTP と HTTPS CONNECT のためのフォワードプロキシで�
 
 ## Esperanta が行わないこと
 
-Esperanta はオープンプロキシ、TLS 傍受プロキシ、キャッシュプロキシではありません。HTTPS CONNECT の通信はエンドツーエンドで暗号化されたままで、カスタム上流ヘッダーは通常の HTTP 転送だけに適用されます。
+Esperanta はオープンプロキシ、TLS 傍受プロキシ、キャッシュプロキシではありません。HTTPS CONNECT の通信はエンドツーエンドで暗号化されたままで、ヘッダーは変更できません。HTTPS の上流にヘッダーを追加する場合は、[転送先を固定した専用ポート](/ja/configuration)を使います。

@@ -58,10 +58,22 @@ func TestNonSnapProxy(t *testing.T) {
 			t.Fatal(err)
 		}
 		address := unusedAddress(t)
-		configuration := writeConfig(t, address, ports, "127.0.0.1")
+		targetAddress := unusedAddress(t)
+		for targetAddress == address {
+			targetAddress = unusedAddress(t)
+		}
+		configuration := writeConfig(t, address, append([]int{443}, ports...), "127.0.0.1",
+			fmt.Sprintf("request_target:\n  - port: %d\n    upstream_host: example.com\n", addressPort(t, targetAddress)))
 		service := startService(t, binary, configuration,
 			"SSL_CERT_FILE="+certificate, "SSL_CERT_DIR="+directory)
 		service.waitReady(t, address)
+		service.waitReady(t, targetAddress)
+		if status, _, err := throughProxy(targetAddress, "GET", origin.URL); err != nil || status != 400 {
+			t.Fatalf("dedicated listener accepted absolute URL: status=%d error=%v", status, err)
+		}
+		if status, _, err := throughProxy(targetAddress, "CONNECT", tlsOrigin.Listener.Addr().String()); err != nil || status != 405 {
+			t.Fatalf("dedicated listener accepted CONNECT: status=%d error=%v", status, err)
+		}
 
 		// Trust roots must already be cached. Removing the source also catches
 		// attempts to defer certificate loading until the first HTTPS request.
@@ -289,10 +301,15 @@ func addressPort(t *testing.T, address string) int {
 	return value
 }
 
-func writeConfig(t *testing.T, address string, ports []int, source string) string {
+func writeConfig(t *testing.T, address string, ports []int, source string, extra ...string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	configuration := fmt.Sprintf("listen: %q\nallowed_sources: [%q]\nallowed_ports: [%d, %d]\ndeny_private_destinations: false\n", address, source, ports[0], ports[1])
+	portStrings := make([]string, 0, len(ports))
+	for _, port := range ports {
+		portStrings = append(portStrings, strconv.Itoa(port))
+	}
+	configuration := fmt.Sprintf("listen: %q\nallowed_sources: [%q]\nallowed_ports: [%s]\ndeny_private_destinations: false\n",
+		address, source, strings.Join(portStrings, ", ")) + strings.Join(extra, "")
 	if err := os.WriteFile(path, []byte(configuration), 0600); err != nil {
 		t.Fatal(err)
 	}

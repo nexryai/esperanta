@@ -21,15 +21,16 @@ curl --noproxy '' --proxy http://127.0.0.1:8080 https://example.com/
 
 ## 上流ヘッダー
 
-通常の HTTP 転送では、設定した `upstream_headers` がすべてのリクエストに設定され、同名のクライアント値を置き換えます。
+通常の HTTP 転送では、トップレベルの `upstream_headers` は接続先ホスト名が一致する場合だけ適用され、クライアントの同名ヘッダーを置き換えます。
 
 ```yaml
 upstream_headers:
-  User-Agent: "Esperanta"
-  X-Origin-Authorization: "Bearer secret"
+  "127.0.0.1":
+    User-Agent: "Esperanta"
+    X-Origin-Authorization: "Bearer secret"
 ```
 
-リクエストヘッダーを返す HTTP エンドポイントで結果を確認できます。本番の秘密情報をシェルの履歴に残さず、パーミッション 0600 の設定ファイルから読み込んでください。
+ダミーの値を使い、リクエストヘッダーを返すローカル HTTP エンドポイントで結果を確認できます。この例では、隔離したテスト用インスタンスでポート 8000 を許可し、`deny_private_destinations` を無効にします。本番の秘密情報はシェルの履歴に残さず、アクセス権を制限した設定ファイルに保存してください。
 
 ```sh
 curl --noproxy '' --proxy http://127.0.0.1:8080 \
@@ -38,6 +39,16 @@ curl --noproxy '' --proxy http://127.0.0.1:8080 \
 ```
 
 CONNECT トンネルは不透明です。TLS クライアント用のヘッダーはプロキシではなく TLS クライアントが制御します。
+
+## 専用ポートからの HTTPS 転送
+
+8081 に [`request_target` を設定](/ja/configuration)したら、そのポートに通常の HTTP リクエストを送ります。`--proxy` や `--request-target` は不要です。
+
+```sh
+curl --noproxy '*' 'http://127.0.0.1:8081/api/status?check=1'
+```
+
+Esperanta は設定済みのヘッダーを付け、固定の上流に HTTPS で接続します。Cloudflare Access を使う場合は、対象アプリケーションの Service Auth ポリシーでサービストークンを許可してください。
 
 ## プロキシ環境変数
 

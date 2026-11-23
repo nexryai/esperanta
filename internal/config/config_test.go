@@ -53,6 +53,36 @@ func TestUpstreamHeadersLoad(t *testing.T) {
 	}
 }
 
+func TestRequestTargets(t *testing.T) {
+	const base = "allowed_sources: [127.0.0.1]\n"
+	const entry = "  - port: 8081\n    upstream_host: app.example.com\n"
+	c, err := loadYAML(t, base+"request_target:\n"+entry+
+		"    upstream_headers:\n      CF-Access-Client-Id: example\n"+
+		"  - port: 8082\n    upstream_host: another.example.com\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.RequestTargets) != 2 || c.RequestTargets[0].Port != 8081 ||
+		c.RequestTargets[0].UpstreamHost != "app.example.com" ||
+		c.RequestTargets[0].UpstreamHeaders["CF-Access-Client-Id"] != "example" {
+		t.Fatal("request targets not loaded")
+	}
+	for name, contents := range map[string]string{
+		"primary port": "request_target:\n" + strings.Replace(entry, "8081", "8080", 1),
+		"duplicate":    "request_target:\n" + entry + entry,
+		"invalid port": "request_target:\n" + strings.Replace(entry, "8081", "0", 1),
+		"invalid host": "request_target:\n" + strings.Replace(entry, "app.example.com", "https://app.example.com/path", 1),
+		"forbidden":    "request_target:\n" + entry + "    upstream_headers: {Host: example.com}\n",
+		"no HTTPS":     "allowed_ports: [80]\nrequest_target:\n" + entry,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := loadYAML(t, base+contents); err == nil {
+				t.Fatal("invalid request target accepted")
+			}
+		})
+	}
+}
+
 func TestInvalidConfigurations(t *testing.T) {
 	for name, contents := range map[string]string{
 		"empty ACL":           "allowed_sources: []",

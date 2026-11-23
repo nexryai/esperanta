@@ -21,15 +21,16 @@ curl --noproxy '' --proxy http://127.0.0.1:8080 https://example.com/
 
 ## Upstream headers
 
-For regular HTTP forwarding, configured `upstream_headers` are set on every request and replace client values with the same name.
+For regular HTTP forwarding, top-level `upstream_headers` apply only to the matching destination hostname and replace client values with the same name.
 
 ```yaml
 upstream_headers:
-  User-Agent: "Esperanta"
-  X-Origin-Authorization: "Bearer secret"
+  "127.0.0.1":
+    User-Agent: "Esperanta"
+    X-Origin-Authorization: "Bearer secret"
 ```
 
-Test the result against an HTTP endpoint that echoes request headers. Do not place production secrets in shell history; load them from a mode 0600 configuration file instead.
+Test with dummy values against a local HTTP endpoint that echoes request headers. For this local test, allow port 8000 and disable `deny_private_destinations` in an isolated test instance. Keep production secrets out of shell history and in a configuration file with restricted permissions.
 
 ```sh
 curl --noproxy '' --proxy http://127.0.0.1:8080 \
@@ -38,6 +39,16 @@ curl --noproxy '' --proxy http://127.0.0.1:8080 \
 ```
 
 CONNECT tunnels are opaque. Headers for the TLS client are controlled by the TLS client, not by the proxy.
+
+## Dedicated HTTPS upstream
+
+After [configuring a `request_target`](/en/configuration#fixed-https-forwarding) on port 8081, send a normal HTTP request to that port. Do not use `--proxy` or `--request-target`:
+
+```sh
+curl --noproxy '*' 'http://127.0.0.1:8081/api/status?check=1'
+```
+
+Esperanta adds the configured headers and connects to the fixed upstream over HTTPS. For Cloudflare Access, allow the configured service token in a Service Auth policy for the application.
 
 ## Proxy environment variables
 
