@@ -43,32 +43,37 @@ func TestLoadAndSourceACL(t *testing.T) {
 }
 
 func TestUpstreamHeadersLoad(t *testing.T) {
-	c, err := loadYAML(t, "allowed_sources: [127.0.0.1]\nupstream_headers:\n  User-Agent: Esperanta\n  x-origin-authorization: secret\n")
+	c, err := loadYAML(t, "allowed_sources: [127.0.0.1]\nupstream_headers:\n  API.Example.COM.:\n    Authorization: Bearer domain-secret\n    X.Example: dotted-header\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.UpstreamHeaders["User-Agent"] != "Esperanta" ||
-		c.UpstreamHeaders["x-origin-authorization"] != "secret" {
-		t.Fatalf("unexpected upstream headers: %#v", c.UpstreamHeaders)
+	headers := c.UpstreamHeaders["API.Example.COM."]
+	if headers["Authorization"] != "Bearer domain-secret" || headers["X.Example"] != "dotted-header" {
+		t.Fatalf("unexpected domain headers: %#v", c.UpstreamHeaders)
 	}
 }
 
 func TestInvalidConfigurations(t *testing.T) {
 	for name, contents := range map[string]string{
-		"empty ACL":          "allowed_sources: []",
-		"invalid IP":         "allowed_sources: [no-such-ip]",
-		"unknown field":      "allowed_sources: [127.0.0.1]\nallow_all: true",
-		"duplicate field":    "allowed_sources: [127.0.0.1]\nallowed_sources: ['::1']",
-		"multiple documents": "allowed_sources: [127.0.0.1]\n---\nallowed_sources: ['::1']",
-		"root port":          "allowed_sources: [127.0.0.1]\nlisten: '127.0.0.1:80'",
-		"invalid port":       "allowed_sources: [127.0.0.1]\nallowed_ports: [65536]",
-		"zero limit":         "allowed_sources: [127.0.0.1]\nmax_concurrent: 0",
-		"negative timeout":   "allowed_sources: [127.0.0.1]\ntunnel_timeout: -1s",
-		"invalid header":     "allowed_sources: [127.0.0.1]\nupstream_headers:\n  'Bad Header': value",
-		"forbidden header":   "allowed_sources: [127.0.0.1]\nupstream_headers:\n  Host: example.com",
-		"duplicate header":   "allowed_sources: [127.0.0.1]\nupstream_headers:\n  X-Test: one\n  x-test: two",
-		"invalid value":      "allowed_sources: [127.0.0.1]\nupstream_headers:\n  X-Test: \"line\\nbreak\"",
-		"oversized":          "allowed_sources: [127.0.0.1]\n#" + strings.Repeat("x", 1<<20),
+		"empty ACL":           "allowed_sources: []",
+		"invalid IP":          "allowed_sources: [no-such-ip]",
+		"unknown field":       "allowed_sources: [127.0.0.1]\nallow_all: true",
+		"duplicate field":     "allowed_sources: [127.0.0.1]\nallowed_sources: ['::1']",
+		"multiple documents":  "allowed_sources: [127.0.0.1]\n---\nallowed_sources: ['::1']",
+		"root port":           "allowed_sources: [127.0.0.1]\nlisten: '127.0.0.1:80'",
+		"invalid port":        "allowed_sources: [127.0.0.1]\nallowed_ports: [65536]",
+		"zero limit":          "allowed_sources: [127.0.0.1]\nmax_concurrent: 0",
+		"negative timeout":    "allowed_sources: [127.0.0.1]\ntunnel_timeout: -1s",
+		"global header":       "allowed_sources: [127.0.0.1]\nupstream_headers:\n  X-Test: value",
+		"invalid header":      "allowed_sources: [127.0.0.1]\nupstream_headers:\n  api.example.com:\n    'Bad Header': value",
+		"forbidden header":    "allowed_sources: [127.0.0.1]\nupstream_headers:\n  api.example.com:\n    Host: example.com",
+		"duplicate header":    "allowed_sources: [127.0.0.1]\nupstream_headers:\n  api.example.com:\n    X-Test: one\n    x-test: two",
+		"invalid value":       "allowed_sources: [127.0.0.1]\nupstream_headers:\n  api.example.com:\n    X-Test: \"line\\nbreak\"",
+		"invalid domain":      "allowed_sources: [127.0.0.1]\nupstream_headers:\n  'bad/domain':\n    X-Test: one",
+		"wildcard domain":     "allowed_sources: [127.0.0.1]\nupstream_headers:\n  '*.example.com':\n    X-Test: one",
+		"duplicate domain":    "allowed_sources: [127.0.0.1]\nupstream_headers:\n  API.example.com:\n    X-Test: one\n  api.example.com:\n    X-Test: two",
+		"invalid header type": "allowed_sources: [127.0.0.1]\nupstream_headers:\n  api.example.com: [one, two]",
+		"oversized":           "allowed_sources: [127.0.0.1]\n#" + strings.Repeat("x", 1<<20),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := loadYAML(t, contents); err == nil {

@@ -14,8 +14,8 @@ allowed_ports: [80, 443]
 deny_private_destinations: true
 
 upstream_headers:
-  User-Agent: "Esperanta"
-  X-Origin-Authorization: "Bearer secret"
+  api.example.com:
+    Authorization: "Bearer domain-secret"
 
 max_concurrent: 1024
 max_connections: 2048
@@ -46,12 +46,12 @@ shutdown_timeout: 15s
 
 ## 上游标头
 
-`upstream_headers` 是可选的标头名到值的映射。Esperanta 在发送普通 HTTP 请求时设置这些标头。配置的标头会替换客户端提供的同名值，适合固定源站认证或 User-Agent。
+`upstream_headers` 将完全匹配的目标主机名映射到仅对该主机添加的标头。出于安全原因，故意不提供全局标头选项，避免凭证被发送到所有目标。匹配不区分大小写，并忽略末尾的点。匹配请求中，客户端提供的同名值会被配置值替换。
 
 ```yaml
 upstream_headers:
-  User-Agent: "Esperanta"
-  Authorization: "Bearer replace-with-secret"
+  api.example.com:
+    Authorization: "Bearer domain-secret"
 ```
 
 `Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Proxy-Connection`、`Proxy-Authorization`、`Keep-Alive`、`TE`、`Trailer` 和 `Upgrade` 是传输控制标头，不能配置。标头名必须是有效 HTTP token，值不能包含控制字符，大小写不敏感的重名也会被拒绝。

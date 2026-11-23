@@ -27,21 +27,26 @@ func (p *bufferPool) Put(b []byte) {
 }
 
 type Proxy struct {
-	c         config.Config
-	transport *http.Transport
-	forward   *httputil.ReverseProxy
-	slots     chan struct{}
-	buffers   bufferPool
-	mu        sync.Mutex
-	tunnels   map[net.Conn]net.Conn
-	closed    bool
+	c             config.Config
+	transport     *http.Transport
+	forward       *httputil.ReverseProxy
+	slots         chan struct{}
+	buffers       bufferPool
+	domainHeaders map[string]http.Header
+	mu            sync.Mutex
+	tunnels       map[net.Conn]net.Conn
+	closed        bool
 }
 
 func New(c config.Config) *Proxy {
 	p := &Proxy{
-		c:       c,
-		slots:   make(chan struct{}, c.MaxConcurrent),
-		tunnels: make(map[net.Conn]net.Conn),
+		c:             c,
+		slots:         make(chan struct{}, c.MaxConcurrent),
+		tunnels:       make(map[net.Conn]net.Conn),
+		domainHeaders: make(map[string]http.Header, len(c.UpstreamHeaders)),
+	}
+	for domain, headers := range c.UpstreamHeaders {
+		p.domainHeaders[config.CanonicalDomain(domain)] = headerSet(headers)
 	}
 	p.transport = &http.Transport{
 		Proxy:                  nil,
@@ -64,8 +69,10 @@ func New(c config.Config) *Proxy {
 			r.Out.Host = r.In.URL.Host
 			r.Out.Header.Del("Proxy-Authorization")
 			r.Out.Header.Del("Proxy-Connection")
-			for name, value := range p.c.UpstreamHeaders {
-				r.Out.Header.Set(name, value)
+			if scoped := p.domainHeaders[config.CanonicalDomain(r.In.URL.Hostname())]; scoped != nil {
+				for name, value := range scoped {
+					r.Out.Header[name] = value
+				}
 			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
@@ -74,6 +81,14 @@ func New(c config.Config) *Proxy {
 		},
 	}
 	return p
+}
+
+func headerSet(values map[string]string) http.Header {
+	headers := make(http.Header, len(values))
+	for name, value := range values {
+		headers.Set(name, value)
+	}
+	return headers
 }
 
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {

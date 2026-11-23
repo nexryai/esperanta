@@ -14,8 +14,8 @@ allowed_ports: [80, 443]
 deny_private_destinations: true
 
 upstream_headers:
-  User-Agent: "Esperanta"
-  X-Origin-Authorization: "Bearer secret"
+  api.example.com:
+    Authorization: "Bearer domain-secret"
 
 max_concurrent: 1024
 max_connections: 2048
@@ -46,12 +46,12 @@ The file is decoded strictly: unknown fields, duplicate fields and multiple YAML
 
 ## Upstream headers
 
-`upstream_headers` is an optional map of header names to values. Esperanta applies these headers to regular HTTP requests sent upstream. A configured header replaces any value supplied by the client, which is useful for static origin authorization or a fixed User-Agent.
+`upstream_headers` maps an exact destination hostname to headers that Esperanta adds only for that host. There is intentionally no global header option, so credentials cannot be sent to every destination. Matching is case-insensitive and ignores a trailing dot. A configured header replaces any value supplied by the client for the matching request.
 
 ```yaml
 upstream_headers:
-  User-Agent: "Esperanta"
-  Authorization: "Bearer replace-with-secret"
+  api.example.com:
+    Authorization: "Bearer domain-secret"
 ```
 
 The following headers are rejected because they are transport metadata: `Host`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Proxy-Connection`, `Proxy-Authorization`, `Keep-Alive`, `TE`, `Trailer` and `Upgrade`. Names must be valid HTTP tokens; values must not contain control characters. Duplicate case-insensitive names are rejected.

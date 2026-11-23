@@ -9,28 +9,29 @@ import (
 	"net/netip"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	Listen          string            `yaml:"listen"`
-	AllowedSources  []string          `yaml:"allowed_sources"`
-	AllowedPorts    []int             `yaml:"allowed_ports"`
-	DenyPrivate     bool              `yaml:"deny_private_destinations"`
-	UpstreamHeaders map[string]string `yaml:"upstream_headers"`
-	MaxConcurrent   int               `yaml:"max_concurrent"`
-	MaxConnections  int               `yaml:"max_connections"`
-	MaxIdleConns    int               `yaml:"max_idle_connections"`
-	MaxIdlePerHost  int               `yaml:"max_idle_connections_per_host"`
-	DialTimeout     time.Duration     `yaml:"dial_timeout"`
-	HeaderTimeout   time.Duration     `yaml:"header_timeout"`
-	RequestTimeout  time.Duration     `yaml:"request_timeout"`
-	IdleTimeout     time.Duration     `yaml:"idle_timeout"`
-	TunnelTimeout   time.Duration     `yaml:"tunnel_timeout"`
-	ShutdownTimeout time.Duration     `yaml:"shutdown_timeout"`
-	Sources         []netip.Prefix    `yaml:"-"`
+	Listen          string                       `yaml:"listen"`
+	AllowedSources  []string                     `yaml:"allowed_sources"`
+	AllowedPorts    []int                        `yaml:"allowed_ports"`
+	DenyPrivate     bool                         `yaml:"deny_private_destinations"`
+	UpstreamHeaders map[string]map[string]string `yaml:"upstream_headers"`
+	MaxConcurrent   int                          `yaml:"max_concurrent"`
+	MaxConnections  int                          `yaml:"max_connections"`
+	MaxIdleConns    int                          `yaml:"max_idle_connections"`
+	MaxIdlePerHost  int                          `yaml:"max_idle_connections_per_host"`
+	DialTimeout     time.Duration                `yaml:"dial_timeout"`
+	HeaderTimeout   time.Duration                `yaml:"header_timeout"`
+	RequestTimeout  time.Duration                `yaml:"request_timeout"`
+	IdleTimeout     time.Duration                `yaml:"idle_timeout"`
+	TunnelTimeout   time.Duration                `yaml:"tunnel_timeout"`
+	ShutdownTimeout time.Duration                `yaml:"shutdown_timeout"`
+	Sources         []netip.Prefix               `yaml:"-"`
 }
 
 var forbiddenUpstreamHeaders = map[string]struct{}{
@@ -131,21 +132,18 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("invalid destination port %d", p)
 		}
 	}
-	seenHeaders := make(map[string]struct{}, len(c.UpstreamHeaders))
-	for name, value := range c.UpstreamHeaders {
-		if !validHeaderName(name) {
-			return fmt.Errorf("invalid upstream header name %q", name)
+	seenDomains := make(map[string]struct{}, len(c.UpstreamHeaders))
+	for domain, headers := range c.UpstreamHeaders {
+		canonical := CanonicalDomain(domain)
+		if !validDomainName(canonical) {
+			return fmt.Errorf("invalid upstream domain %q", domain)
 		}
-		canonical := http.CanonicalHeaderKey(name)
-		if _, forbidden := forbiddenUpstreamHeaders[canonical]; forbidden {
-			return fmt.Errorf("upstream header %q cannot be configured", canonical)
+		if _, duplicate := seenDomains[canonical]; duplicate {
+			return fmt.Errorf("duplicate upstream domain %q", canonical)
 		}
-		if _, duplicate := seenHeaders[canonical]; duplicate {
-			return fmt.Errorf("duplicate upstream header %q", canonical)
-		}
-		seenHeaders[canonical] = struct{}{}
-		if !validHeaderValue(value) {
-			return fmt.Errorf("invalid value for upstream header %q", canonical)
+		seenDomains[canonical] = struct{}{}
+		if err := validateUpstreamHeaders(headers); err != nil {
+			return fmt.Errorf("upstream_headers[%q]: %w", domain, err)
 		}
 	}
 	if c.MaxConcurrent < 1 || c.MaxConnections < 1 || c.MaxIdleConns < 1 || c.MaxIdlePerHost < 1 {
@@ -196,6 +194,51 @@ func (c Config) AllowsPort(port string) bool {
 		}
 	}
 	return false
+}
+
+func validateUpstreamHeaders(headers map[string]string) error {
+	seen := make(map[string]struct{}, len(headers))
+	for name, value := range headers {
+		if !validHeaderName(name) {
+			return fmt.Errorf("invalid header name %q", name)
+		}
+		canonical := http.CanonicalHeaderKey(name)
+		if _, forbidden := forbiddenUpstreamHeaders[canonical]; forbidden {
+			return fmt.Errorf("header %q cannot be configured", canonical)
+		}
+		if _, duplicate := seen[canonical]; duplicate {
+			return fmt.Errorf("duplicate header %q", canonical)
+		}
+		seen[canonical] = struct{}{}
+		if !validHeaderValue(value) {
+			return fmt.Errorf("invalid value for header %q", canonical)
+		}
+	}
+	return nil
+}
+
+// CanonicalDomain normalizes a destination hostname for domain header matching.
+// Ports are not accepted; callers should pass URL.Hostname().
+func CanonicalDomain(host string) string {
+	return strings.ToLower(strings.TrimSuffix(host, "."))
+}
+
+func validDomainName(name string) bool {
+	if name == "" || len(name) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(name, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for i := 0; i < len(label); i++ {
+			c := label[i]
+			if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validHeaderName(name string) bool {

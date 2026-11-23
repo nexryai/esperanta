@@ -14,8 +14,8 @@ allowed_ports: [80, 443]
 deny_private_destinations: true
 
 upstream_headers:
-  User-Agent: "Esperanta"
-  X-Origin-Authorization: "Bearer secret"
+  api.example.com:
+    Authorization: "Bearer domain-secret"
 
 max_concurrent: 1024
 max_connections: 2048
@@ -46,12 +46,12 @@ shutdown_timeout: 15s
 
 ## 上流ヘッダー
 
-`upstream_headers` はヘッダー名と値の任意のマップです。Esperanta は通常の HTTP リクエストを上流へ送る際にこれらのヘッダーを設定します。設定したヘッダーはクライアントが送った同じ名前の値を置き換えるため、固定のオリジン認証や User-Agent に利用できます。
+`upstream_headers` は、完全一致する接続先ホスト名ごとに、そのホストだけへ追加するヘッダーを設定します。認証情報が全接続先へ送られないよう、グローバルヘッダーの設定は意図的に用意していません。大文字小文字を無視し、末尾のドットは正規化します。一致したリクエストでは、クライアントが送った同じ名前の値が設定値で置き換えられます。
 
 ```yaml
 upstream_headers:
-  User-Agent: "Esperanta"
-  Authorization: "Bearer replace-with-secret"
+  api.example.com:
+    Authorization: "Bearer domain-secret"
 ```
 
 `Host`、`Content-Length`、`Transfer-Encoding`、`Connection`、`Proxy-Connection`、`Proxy-Authorization`、`Keep-Alive`、`TE`、`Trailer`、`Upgrade` はトランスポートの制御用なので設定できません。ヘッダー名は有効な HTTP トークンである必要があり、値に制御文字は使えません。大文字小文字を無視した重複名も拒否されます。

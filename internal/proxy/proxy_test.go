@@ -107,19 +107,38 @@ func TestForwardHeadersAndConnectionReuse(t *testing.T) {
 
 func TestUpstreamCustomHeaders(t *testing.T) {
 	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Values("X-Origin-Authorization"); len(got) != 1 || got[0] != "secret" {
-			t.Errorf("X-Origin-Authorization = %q", got)
+		host, _, err := net.SplitHostPort(r.Host)
+		if err != nil {
+			t.Errorf("Host = %q: %v", r.Host, err)
+			return
 		}
-		if got := r.Header.Get("User-Agent"); got != "Esperanta" {
-			t.Errorf("User-Agent = %q", got)
+		wantAuthorization := "client"
+		wantUserAgent := "client"
+		wantDomain := ""
+		if host == "localhost" {
+			wantAuthorization = "domain-secret"
+			wantUserAgent = "Scoped"
+			wantDomain = "domain-value"
+		}
+		if got := r.Header.Values("X-Origin-Authorization"); len(got) != 1 || got[0] != wantAuthorization {
+			t.Errorf("%s X-Origin-Authorization = %q; want %q", host, got, wantAuthorization)
+		}
+		if got := r.Header.Get("User-Agent"); got != wantUserAgent {
+			t.Errorf("%s User-Agent = %q; want %q", host, got, wantUserAgent)
+		}
+		if got := r.Header.Get("X-Domain"); got != wantDomain {
+			t.Errorf("%s X-Domain = %q; want %q", host, got, wantDomain)
 		}
 		fmt.Fprint(w, "ok")
 	}))
 	defer origin.Close()
 	c := localConfig(t, origin.Listener.Addr().String())
-	c.UpstreamHeaders = map[string]string{
-		"User-Agent":             "Esperanta",
-		"x-origin-authorization": "secret",
+	c.UpstreamHeaders = map[string]map[string]string{
+		"LOCALHOST.": {
+			"User-Agent":             "Scoped",
+			"X-Domain":               "domain-value",
+			"x-origin-authorization": "domain-secret",
+		},
 	}
 	if err := c.Validate(); err != nil {
 		t.Fatal(err)
@@ -135,20 +154,25 @@ func TestUpstreamCustomHeaders(t *testing.T) {
 	transport := &http.Transport{Proxy: http.ProxyURL(proxyURL)}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport, Timeout: 3 * time.Second}
-	request, err := http.NewRequest(http.MethodGet, origin.URL, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	request.Header.Set("User-Agent", "client")
-	request.Header.Set("X-Origin-Authorization", "client")
-	response, err := client.Do(request)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(response.Body)
-	if err != nil || response.StatusCode != http.StatusOK || string(body) != "ok" {
-		t.Fatalf("custom header request failed: %s %q %v", response.Status, body, err)
+	for _, target := range []string{
+		origin.URL,
+		strings.Replace(origin.URL, "127.0.0.1", "localhost", 1),
+	} {
+		request, err := http.NewRequest(http.MethodGet, target, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Header.Set("User-Agent", "client")
+		request.Header.Set("X-Origin-Authorization", "client")
+		response, err := client.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, err := io.ReadAll(response.Body)
+		response.Body.Close()
+		if err != nil || response.StatusCode != http.StatusOK || string(body) != "ok" {
+			t.Fatalf("custom header request to %s failed: %s %q %v", target, response.Status, body, err)
+		}
 	}
 }
 
