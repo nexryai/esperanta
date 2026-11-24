@@ -87,6 +87,38 @@ sudo systemctl enable --now esperanta
 If the repository key is rotated, check the published
 [signing-key fingerprint](https://nexryai.github.io/esperanta/esperanta-archive-keyring.fingerprint).
 
+### Docker Compose
+
+Images are published to `ghcr.io/nexryai/esperanta` for Linux `amd64` and `arm64`.
+Use `edge` for builds from `main`, a `vX.Y.Z` tag for a specific
+release, or `latest` for the most recently published stable release.
+
+Save this as `compose.yml` next to a copy of [`config.yaml`](config.yaml):
+
+```yaml
+services:
+  esperanta:
+    image: ghcr.io/nexryai/esperanta:edge
+    network_mode: host
+    volumes:
+      - ./config.yaml:/etc/esperanta/config.yaml:ro
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+```
+
+```sh
+docker compose up -d
+```
+
+Use a Linux Docker host with Landlock ABI 4 or newer. The example shares the host
+network, so no `ports` mapping is needed and the default config listens only on
+`127.0.0.1:8080`. Use `listen` and `allowed_sources` to control network access.
+The mounted config must be readable by the container's non-root UID 65532;
+keep configs containing credentials private.
+
 ### From source
 
 ```sh

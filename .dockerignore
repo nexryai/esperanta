@@ -1,0 +1,9 @@
+**
+!Dockerfile
+!go.mod
+!go.sum
+!config.yaml
+!cmd/
+!cmd/**
+!internal/
+!internal/**

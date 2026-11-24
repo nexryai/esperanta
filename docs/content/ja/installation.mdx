@@ -1,6 +1,6 @@
 ---
 title: "インストール"
-description: "APT、COPR、pacman、Snap、ソースから Esperanta を導入します。"
+description: "APT、COPR、pacman、Snap、Docker Compose、ソースから Esperanta を導入します。"
 ---
 
 ## Debian / Ubuntu
@@ -78,6 +78,32 @@ Snap の設定は `/var/snap/esperanta/current/config/config.yaml` です。編�
 ```sh
 sudo snap restart esperanta
 ```
+
+## Docker Compose
+
+GHCR のイメージは Linux の `amd64` と `arm64` に対応します。`main` のビルドには `edge`、特定のリリースには `vX.Y.Z` 形式のタグ、最後に公開された安定版には `latest` を使います。
+
+[`config.yaml`](https://github.com/nexryai/esperanta/blob/main/config.yaml) をコピーし、同じディレクトリに以下を `compose.yml` として保存します。
+
+```yaml
+services:
+  esperanta:
+    image: ghcr.io/nexryai/esperanta:edge
+    network_mode: host
+    volumes:
+      - ./config.yaml:/etc/esperanta/config.yaml:ro
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+```
+
+```sh
+docker compose up -d
+```
+
+Landlock ABI 4 以上に対応した Linux の Docker ホストが必要です。この例はホストネットワークを共有するため、`ports` の指定は不要です。既定の設定では `127.0.0.1:8080` のみで待ち受けます。ネットワークアクセスは `listen` と `allowed_sources` で制御してください。マウントした設定ファイルはコンテナの非 root UID 65532 で読み取れるようにし、認証情報を含む場合は公開しないでください。
 
 ## ソースから
 

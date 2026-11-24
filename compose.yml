@@ -1,0 +1,11 @@
+services:
+  esperanta:
+    image: ghcr.io/nexryai/esperanta:edge
+    network_mode: host
+    volumes:
+      - ./config.yaml:/etc/esperanta/config.yaml:ro
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true

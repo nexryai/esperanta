@@ -1,0 +1,60 @@
+name: Container image
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build and test the container
+        run: |
+          docker build --tag ghcr.io/nexryai/esperanta:edge .
+          docker compose run --rm --pull never esperanta --config /etc/esperanta/config.yaml --check
+          docker compose up --detach --pull never
+          for attempt in {1..30}; do
+            status="$(curl --noproxy '*' --silent --output /dev/null --write-out '%{http_code}' \
+              --max-time 1 http://127.0.0.1:8080/ || true)"
+            if [[ "$status" == 400 ]] && docker compose logs esperanta | grep -q 'Landlock sandbox enabled'; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker compose logs esperanta
+          exit 1
+      - name: Remove the test container
+        if: always()
+        run: docker compose down
+
+  publish:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Publish to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          if [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            tags=(--tag "$image:edge")
+          else
+            tags=(--tag "$image:$GITHUB_REF_NAME")
+            if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              tags+=(--tag "$image:latest")
+            fi
+          fi
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker buildx create --use
+          docker buildx build --platform linux/amd64,linux/arm64 "${tags[@]}" --push .

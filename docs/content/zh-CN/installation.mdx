@@ -1,6 +1,6 @@
 ---
 title: "安装"
-description: "通过 APT、COPR、pacman、Snap 或源码安装 Esperanta。"
+description: "通过 APT、COPR、pacman、Snap、Docker Compose 或源码安装 Esperanta。"
 ---
 
 ## Debian 和 Ubuntu
@@ -78,6 +78,32 @@ Snap 配置位于 `/var/snap/esperanta/current/config/config.yaml`，修改后�
 ```sh
 sudo snap restart esperanta
 ```
+
+## Docker Compose
+
+GHCR 镜像支持 Linux `amd64` 和 `arm64`。`edge` 对应 `main` 分支构建，`vX.Y.Z` 格式的标签对应特定发布，`latest` 对应最近发布的稳定版。
+
+复制 [`config.yaml`](https://github.com/nexryai/esperanta/blob/main/config.yaml)，然后在同一目录下将以下内容保存为 `compose.yml`：
+
+```yaml
+services:
+  esperanta:
+    image: ghcr.io/nexryai/esperanta:edge
+    network_mode: host
+    volumes:
+      - ./config.yaml:/etc/esperanta/config.yaml:ro
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+```
+
+```sh
+docker compose up -d
+```
+
+请使用支持 Landlock ABI 4 或更高版本的 Linux Docker 主机。此示例共享主机网络，无需指定 `ports`；默认配置仅监听 `127.0.0.1:8080`。使用 `listen` 和 `allowed_sources` 控制网络访问。挂载的配置文件必须可由容器内的非 root UID 65532 读取，请勿公开含有凭证的配置文件。
 
 ## 从源码安装
 
