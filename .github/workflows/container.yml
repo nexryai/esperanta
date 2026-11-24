@@ -9,9 +9,22 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: container-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    name: Test ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build and test the container
@@ -33,16 +46,58 @@ jobs:
         if: always()
         run: docker compose down
 
-  publish:
+  push-images:
     if: github.event_name == 'push'
     needs: test
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    name: Push ${{ matrix.arch }} image
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - name: Publish to GitHub Container Registry
+      - name: Push image by digest
+        env:
+          ARCH: ${{ matrix.arch }}
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker buildx create --use
+          docker buildx build --platform "linux/$ARCH" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --output "type=image,name=$image,push-by-digest=true,name-canonical=true,push=true" \
+            --metadata-file "$RUNNER_TEMP/build-metadata.json" .
+          mkdir -p "$RUNNER_TEMP/digests"
+          jq -er '."containerimage.digest" | select(test("^sha256:[0-9a-f]{64}$"))' \
+            "$RUNNER_TEMP/build-metadata.json" > "$RUNNER_TEMP/digests/$ARCH"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: push-images
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: digest-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+      - name: Publish multi-architecture tags
         env:
           GHCR_TOKEN: ${{ github.token }}
         run: |
@@ -56,5 +111,12 @@ jobs:
             fi
           fi
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
-          docker buildx create --use
-          docker buildx build --platform linux/amd64,linux/arm64 "${tags[@]}" --push .
+          sources=()
+          for arch in amd64 arm64; do
+            digest="$(cat "$RUNNER_TEMP/digests/$arch")"
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            sources+=("$image@$digest")
+          done
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+          docker buildx imagetools inspect --raw "${tags[1]}" |
+            jq -e '[.manifests[].platform | select(.os == "linux") | .architecture] | sort == ["amd64", "arm64"]'
