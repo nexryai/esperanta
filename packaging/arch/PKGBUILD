@@ -1,5 +1,5 @@
 pkgname=esperanta
-pkgver=0.1.5
+pkgver=0.1.6
 pkgrel=1
 pkgdesc="IP-restricted HTTP and HTTPS forward proxy"
 arch=('x86_64' 'aarch64')
@@ -9,8 +9,8 @@ depends=('ca-certificates' 'systemd')
 makedepends=('go')
 backup=('etc/esperanta/config.yaml')
 # The release workflow replaces the placeholder checksum and version.
-source=("esperanta-0.1.5.tar.gz::https://github.com/nexryai/esperanta/archive/refs/tags/v0.1.5.tar.gz")
-sha256sums=('d30a8a1a3d11331c40054944ffcdf0607f3d80a1b824c3f23a1b243bcfdd2443')
+source=("esperanta-0.1.6.tar.gz::https://github.com/nexryai/esperanta/archive/refs/tags/v0.1.6.tar.gz")
+sha256sums=('08dd9a16c7d79876aca8a540b6546c80e980a8d0f91e975b61a6ac913eb1a850')
 # The binary is a self-contained static Go build and is already stripped by
 # -ldflags '-s -w'. Skipping makepkg's strip/debug steps also lets the same
 # PKGBUILD cross-compile the aarch64 package on an x86_64 build host.

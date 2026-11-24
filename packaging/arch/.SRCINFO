@@ -1,6 +1,6 @@
 pkgbase = esperanta
 	pkgdesc = IP-restricted HTTP and HTTPS forward proxy
-	pkgver = 0.1.5
+	pkgver = 0.1.6
 	pkgrel = 1
 	url = https://github.com/nexryai/esperanta
 	arch = x86_64
@@ -12,7 +12,7 @@ pkgbase = esperanta
 	options = !strip
 	options = !debug
 	backup = etc/esperanta/config.yaml
-	source = esperanta-0.1.5.tar.gz::https://github.com/nexryai/esperanta/archive/refs/tags/v0.1.5.tar.gz
-	sha256sums = d30a8a1a3d11331c40054944ffcdf0607f3d80a1b824c3f23a1b243bcfdd2443
+	source = esperanta-0.1.6.tar.gz::https://github.com/nexryai/esperanta/archive/refs/tags/v0.1.6.tar.gz
+	sha256sums = 08dd9a16c7d79876aca8a540b6546c80e980a8d0f91e975b61a6ac913eb1a850
 
 pkgname = esperanta
