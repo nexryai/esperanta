@@ -25,6 +25,19 @@ deny_private_destinations: true
 #     upstream_headers:
 #       CF-Access-Client-Id: "<client-id>"
 #       CF-Access-Client-Secret: "<client-secret>"
+#
+# Git Smart HTTP 専用の例。プライベート IP を使うには
+# deny_private_destinations: false が必要です（フォワードプロキシにも適用）。
+#   - port: 8082
+#     type: git
+#     upstream_host: 192.168.1.20
+#     allowed_prefixes:
+#       - https://git.example.com/nexryai/hoge
+#       - https://git.example.com/nexryai/fuge
+#     read_only: true
+#     upstream_headers:
+#       CF-Access-Client-Id: "<client-id>"
+#       CF-Access-Client-Secret: "<client-secret>"
 
 max_concurrent: 1024
 max_connections: 2048

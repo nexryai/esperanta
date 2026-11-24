@@ -3,6 +3,7 @@ package proxy
 import (
 	"net/http"
 	"net/http/httputil"
+	"net/netip"
 	"strings"
 
 	"github.com/nexryai/esperanta/internal/config"
@@ -10,7 +11,13 @@ import (
 
 // RequestTarget serves a dedicated listener backed by a single HTTPS origin.
 func (p *Proxy) RequestTarget(target config.RequestTarget) http.Handler {
+	if target.Type == config.RequestTargetGit {
+		return p.gitTarget(target)
+	}
 	host := config.CanonicalDomain(target.UpstreamHost)
+	if ip, err := netip.ParseAddr(host); err == nil && ip.Is6() {
+		host = "[" + host + "]"
+	}
 	headers := headerSet(target.UpstreamHeaders)
 	forward := p.newForward(func(r *httputil.ProxyRequest) {
 		r.Out.URL.Scheme = "https"
@@ -18,6 +25,10 @@ func (p *Proxy) RequestTarget(target config.RequestTarget) http.Handler {
 		r.Out.Host = host
 		applyHeaders(r.Out.Header, headers)
 	})
+	return p.serveTarget(forward)
+}
+
+func (p *Proxy) serveTarget(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		p.serve(w, r, func(w http.ResponseWriter, r *http.Request) {
 			// TRACE could reflect the injected credentials back to the client.
@@ -29,7 +40,7 @@ func (p *Proxy) RequestTarget(target config.RequestTarget) http.Handler {
 				http.Error(w, "origin-form request target required", http.StatusBadRequest)
 				return
 			}
-			p.forwardRequest(w, r, forward)
+			p.forwardRequest(w, r, handler)
 		})
 	})
 }

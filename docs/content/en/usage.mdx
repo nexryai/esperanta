@@ -50,6 +50,16 @@ curl --noproxy '*' 'http://127.0.0.1:8081/api/status?check=1'
 
 Esperanta adds the configured headers and connects to the fixed upstream over HTTPS. For Cloudflare Access, allow the configured service token in a Service Auth policy for the application.
 
+## Cloning from a Git mirror
+
+After [configuring a Git mirror](/en/configuration#git-repository-mirror), replace the upstream scheme and host with the local HTTP listener and keep the repository path:
+
+```sh
+git clone http://127.0.0.1:8081/nexryai/hoge.git
+```
+
+Use the `.git` suffix if the upstream requires it. No forward proxy setting or Cloudflare Access service token is needed on the client. When `read_only: true`, clone and fetch work but pushes are blocked.
+
 ## Proxy environment variables
 
 Most command line tools honor standard proxy variables. Restrict them to the current shell rather than exporting them system-wide when only selected commands should use the proxy.

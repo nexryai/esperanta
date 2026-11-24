@@ -83,6 +83,43 @@ func TestRequestTargets(t *testing.T) {
 	}
 }
 
+func TestGitRequestTarget(t *testing.T) {
+	const base = "allowed_sources: [127.0.0.1]\nrequest_target:\n  - port: 8081\n    type: git\n"
+	const prefixes = "    allowed_prefixes:\n      - https://git.example.com/nexryai/hoge\n      - https://GIT.example.com/nexryai/fuge.git/\n"
+	for _, host := range []string{"192.168.1.20", "2001:db8::20", "git.internal.example"} {
+		c, err := loadYAML(t, base+"    upstream_host: '"+host+"'\n    read_only: true\n"+prefixes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		target := c.RequestTargets[0]
+		gotHost, paths, err := target.GitPrefixes()
+		if err != nil || target.Type != RequestTargetGit || target.UpstreamHost != host || !target.ReadOnly ||
+			gotHost != "git.example.com" || strings.Join(paths, ",") != "/nexryai/hoge,/nexryai/fuge.git" {
+			t.Fatalf("unexpected Git target: %+v, %q, %v, %v", target, gotHost, paths, err)
+		}
+	}
+	const upstream = "    upstream_host: 192.168.1.20\n"
+	for name, contents := range map[string]string{
+		"missing prefixes": base + upstream,
+		"other type":       strings.Replace(base, "type: git", "type: other", 1) + upstream + prefixes,
+		"untyped prefixes": strings.Replace(base, "    type: git\n", "", 1) + upstream + prefixes,
+		"HTTP prefix":      base + upstream + strings.Replace(prefixes, "https:", "http:", 1),
+		"multiple hosts":   base + upstream + strings.Replace(prefixes, "GIT.example", "other.example", 1),
+		"no path":          base + upstream + strings.Replace(prefixes, "/nexryai/hoge", "", 1),
+		"query":            base + upstream + strings.Replace(prefixes, "/hoge", "/hoge?q=x", 1),
+		"fragment":         base + upstream + strings.Replace(prefixes, "/hoge", "/hoge#", 1),
+		"escaped path":     base + upstream + strings.Replace(prefixes, "/hoge", "/%68oge", 1),
+		"unsafe path":      base + upstream + strings.Replace(prefixes, "/hoge", "/../hoge", 1),
+		"upstream port":    base + strings.Replace(upstream, "1.20", "1.20:443", 1) + prefixes,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := loadYAML(t, contents); err == nil {
+				t.Fatal("invalid Git target accepted")
+			}
+		})
+	}
+}
+
 func TestInvalidConfigurations(t *testing.T) {
 	for name, contents := range map[string]string{
 		"empty ACL":           "allowed_sources: []",

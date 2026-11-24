@@ -50,6 +50,16 @@ curl --noproxy '*' 'http://127.0.0.1:8081/api/status?check=1'
 
 Esperanta は設定済みのヘッダーを付け、固定の上流に HTTPS で接続します。Cloudflare Access を使う場合は、対象アプリケーションの Service Auth ポリシーでサービストークンを許可してください。
 
+## Git ミラーからの clone
+
+[Git ミラーを設定](/ja/configuration)したら、上流 URL のスキームとホストをローカルの HTTP 待ち受け先に置き換え、リポジトリのパスはそのまま使います。
+
+```sh
+git clone http://127.0.0.1:8081/nexryai/hoge.git
+```
+
+上流が必要とする場合は `.git` を付けます。クライアント側にフォワードプロキシの設定や Cloudflare Access のサービストークンは不要です。`read_only: true` では clone と fetch ができ、push は拒否されます。
+
 ## プロキシ環境変数
 
 多くのコマンドラインツールは標準のプロキシ変数を参照します。一部のコマンドだけプロキシを使う場合は、システム全体に export せず現在のシェルに限定します。

@@ -62,7 +62,7 @@ CONNECT 是加密字节隧道。Esperanta 无法向 TLS 会话内添加 HTTP 标
 
 ## 固定目标的 HTTPS 转发
 
-每个 `request_target` 条目都会在 `listen` 配置的 IP 地址上打开一个专用 HTTP 端口，并通过 HTTPS 443 端口转发到指定主机。这样可以由 Esperanta 添加 Cloudflare Access 服务令牌，无需将令牌交给客户端。
+每个 `request_target` 条目都会在 `listen` 配置的 IP 地址上打开一个专用 HTTP 端口。省略 `type` 时，Esperanta 会通过 HTTPS 443 端口转发到固定上游。这样可以由 Esperanta 添加 Cloudflare Access 服务令牌，无需将令牌交给客户端。
 
 ```yaml
 request_target:
@@ -73,9 +73,31 @@ request_target:
       CF-Access-Client-Secret: "<client-secret>"
 ```
 
-监听端口必须在 1024 至 65535 之间且不能重复。`upstream_host` 只填写主机名，不含协议、端口或路径。`allowed_ports` 必须包含 443。转发时保留请求方法、路径、查询参数和请求体；客户端的 `Host` 不会改变目标。不接受绝对 URL、CONNECT、TRACE 或协议升级。
+监听端口必须在 1024 至 65535 之间且不能重复。`upstream_host` 接受主机名或不带方括号的 IPv4、IPv6 地址，不含协议、端口或路径。`allowed_ports` 必须包含 443。转发时保留请求方法、路径、查询参数和请求体；客户端的 `Host` 不会改变目标。不接受绝对 URL、CONNECT、TRACE 或协议升级。
 
 专用端口配置的标头会替换客户端的同名标头，与顶层 `upstream_headers` 无关。如不需要添加标头，可省略或使用 `upstream_headers: {}`。专用端口与正向代理共用 `allowed_sources`、目标 IP 限制、连接及并发限制。任何获准连接的客户端都能通过专用端口使用该服务身份。请保护配置文件，并仅在可信网络上向可信客户端开放该 HTTP 端口。
+
+## Git 仓库镜像
+
+使用 `type: git` 仅转发指定仓库的 Git Smart HTTP 请求，不在本地存储仓库。
+
+```yaml
+request_target:
+  - port: 8081
+    type: git
+    upstream_host: 192.168.1.20
+    allowed_prefixes:
+      - https://git.example.com/nexryai/hoge
+      - https://git.example.com/nexryai/fuge
+    read_only: true
+    upstream_headers:
+      CF-Access-Client-Id: "<client-id>"
+      CF-Access-Client-Secret: "<client-secret>"
+```
+
+必须设置 `allowed_prefixes`。列出使用同一主机名的 HTTPS 仓库 URL，不带端口、凭证、查询参数或片段。无论是否带 `.git` 后缀，都只允许列出的仓库，不包括名称相似或嵌套的其他仓库。URL 的主机名用于上游 `Host` 和 TLS 证书验证；实际连接到 `upstream_host` 的 443 端口。使用示例中的私有 IP 需要设置 `deny_private_destinations: false`，这也会放宽正向代理的目标限制。
+
+`read_only: true` 允许克隆和拉取，但会阻止推送。省略或设置为 `false` 时，能否推送由上游权限决定。不支持重定向、Git LFS 或 Web 界面。
 
 ## 限制和超时
 

@@ -62,7 +62,7 @@ Matching at the top level does not require HTTPS. Do not put service tokens ther
 
 ## Fixed HTTPS forwarding
 
-Each `request_target` entry opens a dedicated HTTP port on the IP address from `listen` and forwards to the configured hostname over HTTPS on port 443. This lets Esperanta add a Cloudflare Access service token without giving it to clients.
+Each `request_target` entry opens a dedicated HTTP port on the IP address from `listen`. When `type` is omitted, Esperanta forwards to a fixed upstream over HTTPS on port 443. This lets Esperanta add a Cloudflare Access service token without giving it to clients.
 
 ```yaml
 request_target:
@@ -73,9 +73,31 @@ request_target:
       CF-Access-Client-Secret: "<client-secret>"
 ```
 
-Use a unique listener port from 1024 to 65535 and specify `upstream_host` without a scheme, port, or path. Port 443 must be in `allowed_ports`. Requests preserve the method, path, query, and body. The incoming `Host` cannot change the destination. Absolute URLs, CONNECT, TRACE, and protocol upgrades are rejected.
+Use a unique listener port from 1024 to 65535. `upstream_host` accepts a hostname or bare IPv4 or IPv6 address, without a scheme, port, or path. Port 443 must be in `allowed_ports`. Requests preserve the method, path, query, and body. The incoming `Host` cannot change the destination. Absolute URLs, CONNECT, TRACE, and protocol upgrades are rejected.
 
 Per-listener headers replace same-named client headers and are independent of the top-level `upstream_headers`. Omit them or use `upstream_headers: {}` if none are needed. The dedicated ports share `allowed_sources`, destination IP restrictions, and connection and concurrency limits with the forward proxy. Any allowed client can use the service identity through the dedicated port. Keep the config file private and expose the HTTP listener only to trusted clients on a trusted network.
+
+## Git repository mirror
+
+Use `type: git` to forward Git Smart HTTP requests for selected repositories, without storing repositories locally.
+
+```yaml
+request_target:
+  - port: 8081
+    type: git
+    upstream_host: 192.168.1.20
+    allowed_prefixes:
+      - https://git.example.com/nexryai/hoge
+      - https://git.example.com/nexryai/fuge
+    read_only: true
+    upstream_headers:
+      CF-Access-Client-Id: "<client-id>"
+      CF-Access-Client-Secret: "<client-secret>"
+```
+
+`allowed_prefixes` is required. List full HTTPS repository URLs with a common hostname and no port, credentials, query, or fragment. Each entry allows the listed repository with or without the `.git` suffix, not similarly named or nested repositories. The URL hostname sets the upstream `Host` and TLS certificate name; `upstream_host` sets the network destination on port 443. To use the private IP in the example, set `deny_private_destinations: false`, which also relaxes the forward proxy's destination restrictions.
+
+`read_only: true` allows clone and fetch but blocks pushes. If omitted or `false`, pushes are subject to the upstream's permissions. Redirects, Git LFS, and web UI requests are not supported.
 
 ## Limits and timeouts
 

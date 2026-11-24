@@ -37,9 +37,14 @@ type Config struct {
 
 type RequestTarget struct {
 	Port            int               `yaml:"port"`
+	Type            string            `yaml:"type"`
 	UpstreamHost    string            `yaml:"upstream_host"`
+	AllowedPrefixes []string          `yaml:"allowed_prefixes"`
+	ReadOnly        bool              `yaml:"read_only"`
 	UpstreamHeaders map[string]string `yaml:"upstream_headers"`
 }
+
+const RequestTargetGit = "git"
 
 var forbiddenUpstreamHeaders = map[string]struct{}{
 	"Connection":          {},
@@ -151,8 +156,21 @@ func (c *Config) Validate() error {
 			return fmt.Errorf("request_target[%d].port duplicates listen port %d", i, target.Port)
 		}
 		listenPorts[target.Port] = struct{}{}
-		if !validDomainName(CanonicalDomain(target.UpstreamHost)) {
-			return fmt.Errorf("request_target[%d].upstream_host must be a hostname without a scheme, port or path", i)
+		ip, ipErr := netip.ParseAddr(target.UpstreamHost)
+		if (ipErr != nil || ip.Zone() != "") && !validDomainName(CanonicalDomain(target.UpstreamHost)) {
+			return fmt.Errorf("request_target[%d].upstream_host must be a hostname or IP address without a scheme, port or path", i)
+		}
+		switch target.Type {
+		case "":
+			if len(target.AllowedPrefixes) != 0 || target.ReadOnly {
+				return fmt.Errorf("request_target[%d].allowed_prefixes and read_only require type: git", i)
+			}
+		case RequestTargetGit:
+			if _, _, err := target.GitPrefixes(); err != nil {
+				return fmt.Errorf("request_target[%d].allowed_prefixes: %w", i, err)
+			}
+		default:
+			return fmt.Errorf("request_target[%d].type must be git or omitted", i)
 		}
 		if err := validateUpstreamHeaders(target.UpstreamHeaders); err != nil {
 			return fmt.Errorf("request_target[%d].upstream_headers: %w", i, err)

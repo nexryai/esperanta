@@ -35,6 +35,7 @@ type Proxy struct {
 	domainHeaders map[string]http.Header
 	mu            sync.Mutex
 	tunnels       map[net.Conn]net.Conn
+	gitTransports []*http.Transport
 	closed        bool
 }
 
@@ -162,6 +163,9 @@ func (p *Proxy) Close() {
 	for client, up := range p.tunnels {
 		client.Close()
 		up.Close()
+	}
+	for _, transport := range p.gitTransports {
+		transport.CloseIdleConnections()
 	}
 	p.mu.Unlock()
 	p.transport.CloseIdleConnections()

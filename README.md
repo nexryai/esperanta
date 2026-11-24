@@ -128,7 +128,7 @@ If a load balancer sits in front of the proxy, its IP address is the one checked
 | `allowed_ports` | Restricts destination ports for HTTP forwarding and CONNECT |
 | `deny_private_destinations` | Blocks connections to private, loopback, link-local, shared, and other nonpublic IP addresses |
 | `upstream_headers` | Sets headers only for exactly matching destination hostnames on regular HTTP requests; CONNECT is unaffected |
-| `request_target` | Opens dedicated HTTP listeners, each forwarding to one fixed HTTPS hostname with its own headers |
+| `request_target` | Opens dedicated HTTP listeners for fixed HTTPS forwarding or an allowlisted Git mirror |
 | `max_concurrent` | Limits the combined number of HTTP requests and CONNECT tunnels handled concurrently |
 | `max_connections` | Limits client TCP connections, including idle connections |
 | `max_idle_connections` | Limits idle connections to destinations kept in the pool |
@@ -164,7 +164,7 @@ request_target:
 ```
 
 With the default listen IP, run `curl http://127.0.0.1:8081/api/status`. The
-listener uses the IP from `listen` and forwards the method, path, query and body
+listener uses the IP from `listen` and, when `type` is omitted, forwards the method, path, query and body
 to `https://app.example.com` on port 443. The configured hostname is used for
 HTTP Host and TLS verification, regardless of the incoming Host header. The
 listener rejects absolute URLs, CONNECT, TRACE and protocol upgrades. Use `upstream_headers: {}` or omit
@@ -176,6 +176,30 @@ Port 443 must be in `allowed_ports`. The dedicated listeners share
 limits with the forward proxy. Any allowed client can use the configured
 service identity through the dedicated port. Keep the config file private and
 expose the HTTP listener only to trusted clients on a trusted network.
+
+For a Git mirror that forwards requests without storing repositories, add `type: git`:
+
+```yaml
+request_target:
+  - port: 8081
+    type: git
+    upstream_host: 192.168.1.20
+    allowed_prefixes:
+      - https://git.example.com/nexryai/hoge
+      - https://git.example.com/nexryai/fuge
+    read_only: true
+    upstream_headers:
+      CF-Access-Client-Id: "<client-id>"
+      CF-Access-Client-Secret: "<client-secret>"
+```
+
+```sh
+git clone http://127.0.0.1:8081/nexryai/hoge.git
+```
+
+Use the repository path at the local listener, with or without `.git` as accepted by the upstream. Only the listed repositories are allowed, not similarly named or nested repositories. The HTTPS URLs must share one hostname, which is used for `Host` and TLS certificate verification. `upstream_host` sets the actual connection destination and accepts a hostname or a bare IPv4 or IPv6 address. For the private IP in this example, set `deny_private_destinations: false`; this also relaxes the forward proxy's destination restrictions.
+
+The mirror supports Git Smart HTTP only, not redirects, Git LFS, or the web UI. `read_only: true` allows clone and fetch but blocks pushes. If omitted or `false`, pushes are forwarded and subject to the upstream's permissions.
 
 The proxy checks the IP addresses returned by DNS for each destination and connects directly to a checked IP address.
 It also rejects DNS responses that contain a mix of public and nonpublic IP addresses. If you need to connect to internal services,

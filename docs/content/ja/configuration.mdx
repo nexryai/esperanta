@@ -62,7 +62,7 @@ CONNECT は暗号化されたバイトトンネルです。Esperanta は TLS セ
 
 ## 固定 HTTPS 転送
 
-`request_target` を使うと、`listen` と同じ IP アドレスの別ポートで HTTP を受け、設定したホストの HTTPS（443 番ポート）へ転送できます。Cloudflare Access のサービストークンなど、クライアントに持たせたくないヘッダーを専用ポートで追加できます。
+`request_target` を使うと、`listen` と同じ IP アドレスの別ポートで HTTP を受け付けます。`type` を省略すると、固定の上流へ HTTPS（443 番ポート）で転送します。Cloudflare Access のサービストークンなど、クライアントに持たせたくないヘッダーを専用ポートで追加できます。
 
 ```yaml
 request_target:
@@ -73,9 +73,31 @@ request_target:
       CF-Access-Client-Secret: "<client-secret>"
 ```
 
-待ち受けには重複しない 1024〜65535 のポートを指定します。`upstream_host` はホスト名のみで、スキーム、ポート、パスは指定できません。`allowed_ports` に 443 が必要です。リクエストのメソッド、パス、クエリ、ボディは転送されますが、クライアントが送った `Host` にかかわらず転送先は固定です。絶対形式の URL、CONNECT、TRACE、プロトコルアップグレードは受け付けません。
+待ち受けには重複しない 1024〜65535 のポートを指定します。`upstream_host` にはホスト名または IPv4・IPv6 アドレスを指定できます。スキーム、ポート、パスは指定できません。`allowed_ports` に 443 が必要です。リクエストのメソッド、パス、クエリ、ボディは転送されますが、クライアントが送った `Host` にかかわらず転送先は固定です。絶対形式の URL、CONNECT、TRACE、プロトコルアップグレードは受け付けません。
 
 専用ポートで設定したヘッダーはクライアントの同名ヘッダーを置き換えます。トップレベルの `upstream_headers` は適用されません。追加するヘッダーがなければ省略するか `upstream_headers: {}` とします。専用ポートはフォワードプロキシと `allowed_sources`、接続先 IP 制限、接続数・同時処理数の上限を共有します。許可したクライアントは専用ポート経由でサービストークンの権限を使えるため、設定ファイルを保護し、この HTTP ポートは信頼できるネットワーク上で信頼できるクライアントにだけ公開してください。
+
+## Git リポジトリのミラー
+
+`type: git` は、指定したリポジトリの Git Smart HTTP リクエストだけを転送します。リポジトリのコピーは保存しません。
+
+```yaml
+request_target:
+  - port: 8081
+    type: git
+    upstream_host: 192.168.1.20
+    allowed_prefixes:
+      - https://git.example.com/nexryai/hoge
+      - https://git.example.com/nexryai/fuge
+    read_only: true
+    upstream_headers:
+      CF-Access-Client-Id: "<client-id>"
+      CF-Access-Client-Secret: "<client-secret>"
+```
+
+`allowed_prefixes` は必須です。同じホスト名の HTTPS リポジトリ URL を、ポート・認証情報・クエリ・フラグメントなしで列挙します。`.git` の有無にかかわらず、列挙したリポジトリだけが対象です。名前の似たリポジトリや配下の別リポジトリは対象外です。URL のホスト名を上流の `Host` と TLS 証明書の検証に使い、実際には `upstream_host` の 443 番ポートに接続します。例のプライベート IP には `deny_private_destinations: false` が必要です。この設定はフォワードプロキシの宛先制限も緩和します。
+
+`read_only: true` では clone と fetch ができ、push は拒否されます。省略時または `false` の場合、push の可否は上流の権限に従います。リダイレクト、Git LFS、Web UI には対応しません。
 
 ## 制限とタイムアウト
 

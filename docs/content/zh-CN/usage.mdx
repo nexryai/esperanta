@@ -50,6 +50,16 @@ curl --noproxy '*' 'http://127.0.0.1:8081/api/status?check=1'
 
 Esperanta 会添加配置的标头，并通过 HTTPS 连接到固定上游。使用 Cloudflare Access 时，请在应用的 Service Auth 策略中允许该服务令牌。
 
+## 从 Git 镜像克隆
+
+[配置 Git 镜像](/zh-CN/configuration)后，将上游 URL 的协议和主机替换为本地 HTTP 监听地址，保留仓库路径：
+
+```sh
+git clone http://127.0.0.1:8081/nexryai/hoge.git
+```
+
+如果上游要求，请添加 `.git` 后缀。客户端无需配置正向代理或 Cloudflare Access 服务令牌。`read_only: true` 允许克隆和拉取，但会阻止推送。
+
 ## 代理环境变量
 
 许多命令行工具会读取标准代理变量。如果只有部分命令需要代理，应仅在当前 shell 中设置，而不要导出到整个系统。
